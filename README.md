@@ -55,5 +55,7 @@ Open [http://localhost:5001](http://localhost:5001) in your browser.
 - **Literature Discovery:** Live search across millions of papers via Semantic Scholar Graph & arXiv APIs.
 - **Project Paper Library:** Save open-access literature, cache PDFs, and organize metadata with zero fabricated numbers.
 - **In-App Reader & Annotations:** Read extracted papers in-browser, highlight passages with semantic tags, and collaborate on margin notes with team members.
+- **Project-Scoped Research AI (RAG):** Local FAISS vector search powered by Sentence Transformers. Answers literature questions strictly grounded in saved papers with explicit `[Paper Title, p. X]` receipts.
+
 
 

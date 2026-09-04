@@ -633,3 +633,149 @@ def delete_paper_annotation(project_id, annotation_id, user_id):
         finally:
             conn.close()
 
+# --- Research Notes Helpers ---
+
+def create_research_note(project_id, title, content, user_id):
+    """Create a timestamped research note."""
+    note_id = str(uuid.uuid4())
+    ts = now_iso()
+    title = title.strip() or "Untitled Note"
+    content = content.strip()
+    
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            record = {
+                "id": note_id,
+                "project_id": project_id,
+                "title": title,
+                "content": content,
+                "created_by": user_id,
+                "created_at": ts,
+                "updated_at": ts
+            }
+            supabase_client.table("research_notes").insert(record).execute()
+            supabase_client.table("projects").update({"updated_at": ts}).eq("id", project_id).execute()
+            return {"success": True, "note_id": note_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        c = conn.cursor()
+        try:
+            c.execute("""
+                INSERT INTO research_notes (id, project_id, title, content, created_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (note_id, project_id, title, content, user_id, ts, ts))
+            c.execute("UPDATE projects SET updated_at = ? WHERE id = ?", (ts, project_id))
+            conn.commit()
+            return {"success": True, "note_id": note_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+def get_project_notes(project_id, user_id):
+    """Fetch all research notes for a project."""
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            # Check membership
+            mem_res = supabase_client.table("project_members").select("role").eq("project_id", project_id).eq("user_id", user_id).execute()
+            if not mem_res.data:
+                return []
+                
+            res = supabase_client.table("research_notes").select("*, profiles(full_name, email)").eq("project_id", project_id).order("updated_at", desc=True).execute()
+            notes = []
+            for n in res.data:
+                prof = n.get("profiles") or {}
+                n["author_name"] = prof.get("full_name") or prof.get("email", "Researcher")
+                notes.append(n)
+            return notes
+        except Exception as e:
+            print(f"Error getting notes: {e}")
+            return []
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?", (project_id, user_id))
+        if not c.fetchone():
+            conn.close()
+            return []
+            
+        c.execute("""
+            SELECT n.id, n.project_id, n.title, n.content, n.created_by, n.created_at, n.updated_at,
+                   p.full_name, p.email
+            FROM research_notes n
+            LEFT JOIN profiles p ON n.created_by = p.id
+            WHERE n.project_id = ?
+            ORDER BY n.updated_at DESC
+        """, (project_id,))
+        rows = c.fetchall()
+        conn.close()
+        
+        notes = []
+        for r in rows:
+            notes.append({
+                "id": r[0],
+                "project_id": r[1],
+                "title": r[2],
+                "content": r[3],
+                "created_by": r[4],
+                "created_at": r[5],
+                "updated_at": r[6],
+                "author_name": r[7] or (r[8].split("@")[0] if r[8] else "Researcher")
+            })
+        return notes
+
+def update_research_note(project_id, note_id, title, content, user_id):
+    """Update an existing research note."""
+    ts = now_iso()
+    title = title.strip() or "Untitled Note"
+    content = content.strip()
+    
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            supabase_client.table("research_notes").update({
+                "title": title,
+                "content": content,
+                "updated_at": ts
+            }).eq("id", note_id).eq("project_id", project_id).execute()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        c = conn.cursor()
+        try:
+            c.execute("""
+                UPDATE research_notes 
+                SET title = ?, content = ?, updated_at = ?
+                WHERE id = ? AND project_id = ?
+            """, (title, content, ts, note_id, project_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+def delete_research_note(project_id, note_id, user_id):
+    """Delete a research note."""
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            supabase_client.table("research_notes").delete().eq("id", note_id).eq("project_id", project_id).execute()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        c = conn.cursor()
+        try:
+            c.execute("DELETE FROM research_notes WHERE id = ? AND project_id = ?", (note_id, project_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+
