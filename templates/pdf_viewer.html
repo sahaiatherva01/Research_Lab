@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}Reader — {{ paper.title }}{% endblock %}
+
+{% block head_extra %}
+<style>
+  .reader-layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 1.5rem;
+    height: calc(100vh - 120px);
+  }
+
+  .reader-viewport {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    overflow-y: auto;
+    padding: 2.5rem 3.5rem;
+    position: relative;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .reader-page {
+    background: #0D131F;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 2.5rem;
+    margin-bottom: 2rem;
+    font-family: var(--font-sans);
+    line-height: 1.7;
+    font-size: 0.95rem;
+    color: #E2E8F0;
+    position: relative;
+    white-space: pre-wrap;
+  }
+
+  .reader-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .selection-popover {
+    position: fixed;
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    padding: 0.5rem;
+    display: none;
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .selection-popover.active {
+    display: flex;
+  }
+
+  .annotation-card {
+    background: var(--bg-surface-elevated);
+    border-radius: var(--radius-md);
+    padding: 0.85rem;
+    border-left: 4px solid var(--accent-amber);
+    margin-bottom: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Top Header for Reader -->
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+  <div>
+    <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
+      <a href="{{ url_for('project_view', project_id=project.id, tab='literature') }}" class="btn btn-outline btn-sm" style="padding: 0.25rem 0.6rem;">
+        &larr; Back to Library
+      </a>
+      {% if paper.year %}
+        <span class="badge badge-viewer">{{ paper.year }}</span>
+      {% endif %}
+      {% if paper.venue %}
+        <span style="font-size: 0.75rem; color: var(--accent-cyan);">{{ paper.venue }}</span>
+      {% endif %}
+    </div>
+    <h1 style="font-size: 1.35rem; font-weight: 800; max-width: 850px; line-height: 1.3;">{{ paper.title }}</h1>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 0.5rem;">
+    {% if has_cached_pdf %}
+      <a href="{{ url_for('get_paper_pdf', project_id=project.id, paper_id=paper.id) }}" target="_blank" class="btn btn-secondary btn-sm">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+        Raw PDF
+      </a>
+    {% endif %}
+    <button class="btn btn-primary btn-sm" onclick="openModal('modal-add-annotation')">
+      + Highlight / Note
+    </button>
+  </div>
+</div>
+
+<div class="reader-layout">
+  <!-- Document Viewport -->
+  <div class="reader-viewport" id="document-viewport">
+    {% if pages %}
+      {% for page in pages %}
+        <div class="reader-page" id="page-{{ page.page_number }}" data-page="{{ page.page_number }}">
+          <div class="reader-page-header">
+            <span>Page {{ page.page_number }} of {{ pages | length }}</span>
+            <span>{{ page.char_count }} chars</span>
+          </div>
+          {{ page.text }}
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">
+        <div class="empty-icon" style="color: var(--accent-amber);">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><line x1="12" y1="18" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        </div>
+        <h3 class="empty-title">Full-Text Preview Unavailable</h3>
+        <p class="empty-desc">
+          {{ extraction_error or 'This paper was saved as metadata or the PDF is hosted externally.' }}
+        </p>
+        {% if paper.open_access_pdf_url %}
+          <a href="{{ paper.open_access_pdf_url }}" target="_blank" rel="noopener" class="btn btn-primary">
+            Open External PDF Document
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Highlights & Annotations Sidebar -->
+  <div class="card" style="display: flex; flex-direction: column; height: 100%; padding: 1.25rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-subtle); margin-bottom: 1rem;">
+      <h3 style="font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: 0.35rem;">
+        <span style="color: var(--accent-amber);">★</span> Team Highlights
+      </h3>
+      <span class="badge badge-viewer">{{ annotations | length }} Notes</span>
+    </div>
+
+    <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column;">
+      {% if annotations %}
+        {% for ann in annotations %}
+          <div class="annotation-card" style="border-left-color: {{ ann.color }};" id="annotation-{{ ann.id }}">
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
+              <span><strong>p. {{ ann.page_number }}</strong> &bull; {{ ann.user_name }}</span>
+              {% if project.user_role in ('owner', 'researcher') %}
+                <form method="POST" action="{{ url_for('delete_annotation', project_id=project.id, paper_id=paper.id, annotation_id=ann.id) }}" onsubmit="return confirm('Remove highlight?');">
+                  <button type="submit" style="background:none; border:none; color:var(--accent-rose); cursor:pointer; font-size:1rem; line-height:1;">&times;</button>
+                </form>
+              {% endif %}
+            </div>
+
+            <div style="font-size: 0.85rem; font-style: italic; color: #F1F5F9; background: rgba(0,0,0,0.2); padding: 0.4rem 0.5rem; border-radius: var(--radius-sm);">
+              "{{ ann.selected_text | truncate(140) }}"
+            </div>
+
+            {% if ann.comment %}
+              <div style="font-size: 0.825rem; color: var(--text-secondary);">
+                {{ ann.comment }}
+              </div>
+            {% endif %}
+
+            <div style="font-size: 0.7rem; color: var(--text-muted);">
+              {{ ann.created_at[:10] }}
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; margin-top: 3rem;">
+          No highlights yet.<br>Select text in the reader or click <strong>+ Highlight / Note</strong> to add an observation.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Add Highlight Modal -->
+<div class="modal-backdrop" id="modal-add-annotation">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2 class="modal-title">Add Highlight & Observation</h2>
+      <button onclick="closeModal('modal-add-annotation')" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.5rem;">&times;</button>
+    </div>
+    <form method="POST" action="{{ url_for('add_annotation', project_id=project.id, paper_id=paper.id) }}">
+      <div class="form-group">
+        <label for="ann-page">Page Number</label>
+        <input type="number" id="ann-page" name="page_number" class="form-control" value="1" min="1" max="{{ pages | length if pages else 999 }}" required>
+      </div>
+
+      <div class="form-group">
+        <label for="ann-text">Selected Text / Quote *</label>
+        <textarea id="ann-text" name="selected_text" class="form-control" placeholder="Paste or type the passage you are highlighting..." required></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="ann-comment">Research Note / Comment</label>
+        <textarea id="ann-comment" name="comment" class="form-control" placeholder="Why is this passage significant? What does it imply for our hypothesis?"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="ann-color">Highlight Tag Color</label>
+        <select id="ann-color" name="color" class="form-control">
+          <option value="#F59E0B">🟡 Gold (Key Finding)</option>
+          <option value="#06B6D4">🔵 Cyan (Methodology / Baseline)</option>
+          <option value="#10B981">🟢 Emerald (Evidence Supporting Hypothesis)</option>
+          <option value="#EF4444">🔴 Rose (Contradiction / Limitation)</option>
+        </select>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-add-annotation')">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btn-save-annotation">Save Highlight</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+  // Selection listener to quickly populate annotation modal with highlighted text
+  document.addEventListener('mouseup', () => {
+    const selection = window.getSelection();
+    const text = selection ? selection.toString().trim() : '';
+    if (text.length > 5) {
+      const textarea = document.getElementById('ann-text');
+      if (textarea) textarea.value = text;
+      
+      // Determine approximate page number from closest parent
+      let node = selection.anchorNode;
+      while (node && node !== document.body) {
+        if (node.dataset && node.dataset.page) {
+          const pageInput = document.getElementById('ann-page');
+          if (pageInput) pageInput.value = node.dataset.page;
+          break;
+        }
+        node = node.parentNode;
+      }
+    }
+  });
+</script>
+{% endblock %}

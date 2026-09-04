@@ -64,6 +64,20 @@ CREATE TABLE IF NOT EXISTS public.research_notes (
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 6. Paper Annotations Table (Highlights & Marginalia)
+CREATE TABLE IF NOT EXISTS public.paper_annotations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    paper_id UUID NOT NULL REFERENCES public.papers(id) ON DELETE CASCADE,
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    page_number INTEGER NOT NULL,
+    selected_text TEXT NOT NULL,
+    comment TEXT,
+    color TEXT DEFAULT '#F59E0B',
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+
 -- ==============================================================================
 -- Automatic Triggers
 -- ==============================================================================
@@ -215,5 +229,21 @@ CREATE POLICY "Owners and Researchers can update research notes"
 
 CREATE POLICY "Owners and Researchers can delete research notes"
     ON public.research_notes FOR DELETE
+    TO authenticated
+    USING (public.get_project_role(project_id, auth.uid()) IN ('owner', 'researcher'));
+
+-- Paper Annotations Policies
+CREATE POLICY "Project members can view paper annotations"
+    ON public.paper_annotations FOR SELECT
+    TO authenticated
+    USING (public.is_project_member(project_id, auth.uid()));
+
+CREATE POLICY "Owners and Researchers can add paper annotations"
+    ON public.paper_annotations FOR INSERT
+    TO authenticated
+    WITH CHECK (public.get_project_role(project_id, auth.uid()) IN ('owner', 'researcher'));
+
+CREATE POLICY "Owners and Researchers can delete paper annotations"
+    ON public.paper_annotations FOR DELETE
     TO authenticated
     USING (public.get_project_role(project_id, auth.uid()) IN ('owner', 'researcher'));

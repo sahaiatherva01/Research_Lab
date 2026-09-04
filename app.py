@@ -264,11 +264,53 @@ def delete_paper(project_id):
         flash(f"Failed to remove paper: {res.get('error')}", "error")
     return redirect(url_for("project_view", project_id=project_id, tab="literature"))
 
+import research.pdf_reader as pdf_reader
+
+@app.route("/projects/<project_id>/literature/<paper_id>/reader")
+@login_required
+def paper_reader(project_id, paper_id):
+    user = session["user"]
+    proj = db.get_project_details(project_id, user["id"])
+    if not proj:
+        flash("Access denied.", "error")
+        return redirect(url_for("dashboard"))
+    
+    # Get paper info
+    saved_papers = papers_mgmt.get_project_papers(project_id, user["id"])
+    target_paper = next((p for p in saved_papers if p["id"] == paper_id), None)
+    if not target_paper:
+        flash("Paper not found in project library.", "error")
+        return redirect(url_for("project_view", project_id=project_id, tab="literature"))
+    
+    pdf_path = os.path.join(papers_mgmt.UPLOADS_DIR, project_id, f"{paper_id}.pdf")
+    pages_data = []
+    extraction_error = None
+    
+    if os.path.exists(pdf_path):
+        ext_res = pdf_reader.extract_pdf_pages(pdf_path)
+        if ext_res.get("success"):
+            pages_data = ext_res.get("pages", [])
+        else:
+            extraction_error = ext_res.get("error")
+    else:
+        extraction_error = "PDF has not been downloaded to local cache."
+        
+    annotations = db.get_paper_annotations(project_id, paper_id, user["id"])
+    
+    return render_template(
+        "pdf_viewer.html",
+        project=proj,
+        paper=target_paper,
+        pages=pages_data,
+        annotations=annotations,
+        extraction_error=extraction_error,
+        has_cached_pdf=os.path.exists(pdf_path)
+    )
+
 @app.route("/projects/<project_id>/literature/<paper_id>/pdf")
 @login_required
 def get_paper_pdf(project_id, paper_id):
     user = session["user"]
-    # Check project membership
     proj = db.get_project_details(project_id, user["id"])
     if not proj:
         flash("Access denied.", "error")
@@ -280,6 +322,39 @@ def get_paper_pdf(project_id, paper_id):
     
     flash("PDF is not cached locally or open access copy is unavailable.", "info")
     return redirect(url_for("project_view", project_id=project_id, tab="literature"))
+
+@app.route("/projects/<project_id>/literature/<paper_id>/annotations", methods=["POST"])
+@login_required
+def add_annotation(project_id, paper_id):
+    user = session["user"]
+    page_number = request.form.get("page_number", 1)
+    selected_text = request.form.get("selected_text", "").strip()
+    comment = request.form.get("comment", "").strip()
+    color = request.form.get("color", "#F59E0B")
+    
+    if not selected_text:
+        flash("Highlighted text cannot be empty.", "error")
+        return redirect(url_for("paper_reader", project_id=project_id, paper_id=paper_id))
+    
+    res = db.add_paper_annotation(project_id, paper_id, user["id"], page_number, selected_text, comment, color)
+    if res["success"]:
+        flash("Annotation and highlight saved.", "success")
+    else:
+        flash(f"Could not save annotation: {res.get('error')}", "error")
+        
+    return redirect(url_for("paper_reader", project_id=project_id, paper_id=paper_id))
+
+@app.route("/projects/<project_id>/literature/<paper_id>/annotations/<annotation_id>/delete", methods=["POST"])
+@login_required
+def delete_annotation(project_id, paper_id, annotation_id):
+    user = session["user"]
+    res = db.delete_paper_annotation(project_id, annotation_id, user["id"])
+    if res["success"]:
+        flash("Highlight removed.", "info")
+    else:
+        flash(f"Failed to remove highlight: {res.get('error')}", "error")
+    return redirect(url_for("paper_reader", project_id=project_id, paper_id=paper_id))
+
 
 @app.route("/projects/<project_id>/invite", methods=["POST"])
 @login_required

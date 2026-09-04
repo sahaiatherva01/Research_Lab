@@ -111,9 +111,28 @@ def _init_local_db():
         FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL
     );
     """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS paper_annotations (
+        id TEXT PRIMARY KEY,
+        paper_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        page_number INTEGER NOT NULL,
+        selected_text TEXT NOT NULL,
+        comment TEXT,
+        color TEXT DEFAULT '#F59E0B',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE CASCADE,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE
+    );
+    """)
     
     conn.commit()
     conn.close()
+
+
 
 _init_local_db()
 
@@ -510,3 +529,107 @@ def invite_collaborator(project_id, email, role, inviter_user_id):
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
+
+# --- Paper Annotations Helpers ---
+
+def add_paper_annotation(project_id, paper_id, user_id, page_number, selected_text, comment="", color="#F59E0B"):
+    """Add a highlight annotation to a saved paper."""
+    annotation_id = str(uuid.uuid4())
+    ts = now_iso()
+    
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            record = {
+                "id": annotation_id,
+                "paper_id": paper_id,
+                "project_id": project_id,
+                "user_id": user_id,
+                "page_number": int(page_number),
+                "selected_text": selected_text.strip(),
+                "comment": comment.strip() if comment else "",
+                "color": color,
+                "created_at": ts
+            }
+            supabase_client.table("paper_annotations").insert(record).execute()
+            return {"success": True, "annotation_id": annotation_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        c = conn.cursor()
+        try:
+            c.execute("""
+                INSERT INTO paper_annotations (id, paper_id, project_id, user_id, page_number, selected_text, comment, color, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (annotation_id, paper_id, project_id, user_id, int(page_number), selected_text.strip(), comment.strip() if comment else "", color, ts))
+            conn.commit()
+            return {"success": True, "annotation_id": annotation_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+def get_paper_annotations(project_id, paper_id, user_id):
+    """Fetch all highlights and annotations for a specific paper."""
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            res = supabase_client.table("paper_annotations").select("*, profiles(full_name, email)").eq("paper_id", paper_id).eq("project_id", project_id).order("page_number", desc=False).order("created_at", desc=False).execute()
+            annotations = []
+            for item in res.data:
+                prof = item.get("profiles") or {}
+                item["user_name"] = prof.get("full_name") or prof.get("email", "Lab Member")
+                annotations.append(item)
+            return annotations
+        except Exception as e:
+            print(f"Error getting annotations: {e}")
+            return []
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        c = conn.cursor()
+        c.execute("""
+            SELECT a.id, a.paper_id, a.project_id, a.user_id, a.page_number, a.selected_text, a.comment, a.color, a.created_at,
+                   p.full_name, p.email
+            FROM paper_annotations a
+            LEFT JOIN profiles p ON a.user_id = p.id
+            WHERE a.paper_id = ? AND a.project_id = ?
+            ORDER BY a.page_number ASC, a.created_at ASC
+        """, (paper_id, project_id))
+        rows = c.fetchall()
+        conn.close()
+        
+        annotations = []
+        for r in rows:
+            annotations.append({
+                "id": r[0],
+                "paper_id": r[1],
+                "project_id": r[2],
+                "user_id": r[3],
+                "page_number": r[4],
+                "selected_text": r[5],
+                "comment": r[6],
+                "color": r[7],
+                "created_at": r[8],
+                "user_name": r[9] or (r[10].split("@")[0] if r[10] else "Lab Member")
+            })
+        return annotations
+
+def delete_paper_annotation(project_id, annotation_id, user_id):
+    """Delete a highlight/annotation."""
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            supabase_client.table("paper_annotations").delete().eq("id", annotation_id).eq("project_id", project_id).execute()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        c = conn.cursor()
+        try:
+            c.execute("DELETE FROM paper_annotations WHERE id = ? AND project_id = ?", (annotation_id, project_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+

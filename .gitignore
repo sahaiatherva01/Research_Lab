@@ -1,0 +1,147 @@
+# ==============================
+# Environment & Secrets
+# ==============================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets.json
+credentials.json
+
+# ==============================
+# Python
+# ==============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python packaging
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+
+# Testing / Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+
+# ==============================
+# Flask
+# ==============================
+instance/
+.webassets-cache/
+
+# ==============================
+# Databases
+# ==============================
+*.db
+*.sqlite
+*.sqlite3
+
+# ==============================
+# AI / ML
+# ==============================
+# Model files
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.h5
+*.keras
+*.pkl
+*.joblib
+*.safetensors
+*.bin
+
+# Datasets
+datasets/
+dataset/
+data/
+*.csv
+*.xlsx
+
+# ML experiment outputs
+runs/
+wandb/
+mlruns/
+checkpoints/
+outputs/
+
+# ==============================
+# Logs
+# ==============================
+*.log
+logs/
+
+# ==============================
+# IDE / Editors
+# ==============================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ==============================
+# OS Generated Files
+# ==============================
+Thumbs.db
+Desktop.ini
+
+# ==============================
+# Temporary Files
+# ==============================
+*.tmp
+*.temp
+*.bak
+*.backup
+*.cache
+
+# ==============================
+# Large Archives
+# ==============================
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# ==============================
+# Generated Files
+# ==============================
+*.pdf
+*.docx
+*.pptx
+*.mp4
+*.mov
+*.avi
+
+# ==============================
+# Local uploads / generated media
+# ==============================
+uploads/
+uploaded_files/
+generated/
+media/
+temp/
+tmp/
