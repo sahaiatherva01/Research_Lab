@@ -52,6 +52,11 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
       Notes ({{ project.notes_count }})
     </a>
+    <a href="{{ url_for('project_view', project_id=project.id, tab='ai') }}" 
+       class="tab-btn {{ 'active' if active_tab == 'ai' else '' }}" id="tab-btn-ai">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+      AI Assistant (RAG)
+    </a>
     <a href="{{ url_for('project_view', project_id=project.id, tab='team') }}" 
        class="tab-btn {{ 'active' if active_tab == 'team' else '' }}" id="tab-btn-team">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -344,7 +349,113 @@
 
   </div>
 
+{% elif active_tab == 'ai' %}
+  <div style="display: flex; flex-direction: column; gap: 1.75rem;">
+    
+    <!-- AI Grounding Header & Index Status -->
+    <div class="card" style="background: linear-gradient(180deg, rgba(17, 24, 39, 0.95), rgba(30, 27, 75, 0.4)); border-color: rgba(99, 102, 241, 0.3);">
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+            <h2 style="font-size: 1.25rem; font-weight: 700;">Project-Grounded Research AI</h2>
+            {% if index_status.indexed %}
+              <span class="badge badge-live">
+                FAISS Indexed ({{ index_status.total_chunks }} Chunks)
+              </span>
+            {% else %}
+              <span class="badge badge-local">Index Pending</span>
+            {% endif %}
+          </div>
+          <p style="color: var(--text-secondary); font-size: 0.875rem; max-width: 680px;">
+            Answers are strictly grounded in this project's <strong>{{ saved_papers | length }} saved papers</strong>. Every claim carries an exact paper and page receipt.
+          </p>
+        </div>
+
+        <form method="POST" action="{{ url_for('ai_reindex_project', project_id=project.id) }}">
+          <button type="submit" class="btn btn-outline btn-sm" title="Rebuild vector embeddings from saved literature">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Re-Index Literature
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {% if saved_papers %}
+      <!-- Interactive Q&A Form -->
+      <div class="card">
+        <form id="ai-query-form" onsubmit="submitAiQuestion(event)">
+          <div class="form-group" style="margin-bottom: 0.75rem;">
+            <label for="ai-question" style="font-weight: 700; color: var(--text-primary);">
+              Ask a question about this project's literature:
+            </label>
+            <textarea id="ai-question" name="question" class="form-control" style="min-height: 80px; font-size: 0.95rem;" placeholder="e.g. What are the key algorithmic differences between the proposed methods? What baseline datasets are evaluated?" required></textarea>
+          </div>
+
+          <!-- Suggested Quick Prompts -->
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem; flex-wrap: wrap;">
+            <span style="font-size: 0.75rem; color: var(--text-muted); align-self: center;">Quick suggestions:</span>
+            <button type="button" class="btn btn-outline btn-sm" style="font-size: 0.75rem; padding: 0.2rem 0.6rem;" onclick="setAiPrompt('Summarize the primary contributions and methodologies across the saved papers.')">
+              Summarize Contributions
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" style="font-size: 0.75rem; padding: 0.2rem 0.6rem;" onclick="setAiPrompt('What specific limitations or open problems are mentioned in the literature?')">
+              Identify Limitations
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" style="font-size: 0.75rem; padding: 0.2rem 0.6rem;" onclick="setAiPrompt('Compare the datasets and evaluation metrics used in these papers.')">
+              Compare Datasets & Baselines
+            </button>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end;">
+            <button type="submit" class="btn btn-primary" id="btn-ask-ai">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+              <span>Query Literature AI</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- AI Response Container -->
+      <div id="ai-response-card" class="card" style="display: none; animation: modalPop 0.25s ease;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="avatar" style="width: 28px; height: 28px; background: linear-gradient(135deg, var(--accent-primary), var(--accent-cyan)); color:#FFF;">
+              AI
+            </div>
+            <h3 style="font-size: 1.05rem; font-weight: 700;">Grounded Synthesis</h3>
+          </div>
+          <span id="ai-model-badge" class="badge badge-viewer"></span>
+        </div>
+
+        <div id="ai-answer-text" style="font-size: 0.95rem; line-height: 1.7; color: #F1F5F9; white-space: pre-wrap; margin-bottom: 1.5rem;"></div>
+
+        <!-- Citation Receipts Drawer -->
+        <div>
+          <h4 style="font-size: 0.85rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">
+            Source Grounding Receipts ({{ saved_papers | length }} Papers in Scope)
+          </h4>
+          <div id="ai-sources-list" style="display: flex; flex-direction: column; gap: 0.6rem;"></div>
+        </div>
+      </div>
+
+    {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+        </div>
+        <h3 class="empty-title">No Literature Grounding Available</h3>
+        <p class="empty-desc">
+          To ask questions and synthesize findings, first save papers to your project's <strong>Literature</strong> tab.
+        </p>
+        <a href="{{ url_for('project_view', project_id=project.id, tab='literature') }}" class="btn btn-primary">
+          Explore Literature
+        </a>
+      </div>
+    {% endif %}
+
+  </div>
+
 {% elif active_tab == 'notes' %}
+
   <div class="card" style="text-align: center; padding: 3rem 2rem;">
     <div class="empty-icon" style="background-color: rgba(99, 102, 241, 0.1); color: var(--accent-primary);">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -424,3 +535,79 @@
   </div>
 </div>
 {% endblock %}
+
+{% block scripts_extra %}
+<script>
+  function setAiPrompt(text) {
+    const input = document.getElementById('ai-question');
+    if (input) {
+      input.value = text;
+      input.focus();
+    }
+  }
+
+  async function submitAiQuestion(e) {
+    e.preventDefault();
+    const input = document.getElementById('ai-question');
+    const question = input ? input.value.trim() : '';
+    if (!question) return;
+
+    const btn = document.getElementById('btn-ask-ai');
+    const responseCard = document.getElementById('ai-response-card');
+    const answerText = document.getElementById('ai-answer-text');
+    const modelBadge = document.getElementById('ai-model-badge');
+    const sourcesList = document.getElementById('ai-sources-list');
+
+    btn.disabled = true;
+    btn.innerHTML = `<span style="display:inline-block; animation: spin 1s infinite linear;">↻</span> <span>Synthesizing Literature...</span>`;
+
+    try {
+      const res = await fetch("{{ url_for('ai_ask_question', project_id=project.id) }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: question })
+      });
+
+      const data = await res.json();
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg> <span>Query Literature AI</span>`;
+
+      if (data.success) {
+        responseCard.style.display = 'block';
+        answerText.textContent = data.answer;
+        modelBadge.textContent = data.provenance ? data.provenance.model : 'Local Grounding';
+        
+        sourcesList.innerHTML = '';
+        if (data.sources && data.sources.length > 0) {
+          data.sources.forEach(s => {
+            const item = document.createElement('div');
+            item.style.cssText = 'background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 0.75rem;';
+            item.innerHTML = `
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
+                <strong style="color:var(--accent-cyan); font-size:0.85rem;">[${s.index}] ${s.paper_title} (Page ${s.page_number})</strong>
+                <span style="font-size:0.75rem; color:var(--text-muted);">Relevance: ${s.score}</span>
+              </div>
+              <p style="font-size:0.8rem; color:var(--text-secondary); font-style:italic; margin:0;">"${s.snippet}"</p>
+            `;
+            sourcesList.appendChild(item);
+          });
+        } else {
+          sourcesList.innerHTML = '<span style="font-size:0.8rem; color:var(--text-muted);">No direct source matches.</span>';
+        }
+        
+        responseCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        alert(data.error || "Failed to query literature.");
+      }
+    } catch (err) {
+      btn.disabled = false;
+      btn.innerHTML = `<span>Query Literature AI</span>`;
+      alert("Error contacting Research AI: " + err);
+    }
+  }
+</script>
+<style>
+  @keyframes spin { 100% { transform: rotate(360deg); } }
+</style>
+{% endblock %}
+
