@@ -158,6 +158,10 @@ def new_project():
         flash(f"Failed to create project: {res.get('error')}", "error")
         return redirect(url_for("dashboard"))
 
+import research.search as academic_search
+import research.papers as papers_mgmt
+from flask import send_file
+
 @app.route("/projects/<project_id>")
 @login_required
 def project_view(project_id):
@@ -168,7 +172,114 @@ def project_view(project_id):
         return redirect(url_for("dashboard"))
     
     active_tab = request.args.get("tab", "overview")
-    return render_template("project.html", project=project, active_tab=active_tab)
+    search_query = request.args.get("q", "").strip()
+    
+    saved_papers = []
+    search_results = []
+    search_error = None
+    
+    if active_tab == "literature":
+        saved_papers = papers_mgmt.get_project_papers(project_id, user["id"])
+        if search_query:
+            search_res = academic_search.search_academic_papers(search_query)
+            if search_res.get("success"):
+                search_results = search_res.get("papers", [])
+            else:
+                search_error = search_res.get("error")
+                
+    return render_template(
+        "project.html", 
+        project=project, 
+        active_tab=active_tab,
+        saved_papers=saved_papers,
+        search_query=search_query,
+        search_results=search_results,
+        search_error=search_error
+    )
+
+@app.route("/projects/<project_id>/literature/search", methods=["GET"])
+@login_required
+def api_search_papers(project_id):
+    user = session["user"]
+    # Check access
+    proj = db.get_project_details(project_id, user["id"])
+    if not proj:
+        return jsonify({"success": False, "error": "Access denied."}), 403
+    
+    query = request.args.get("q", "").strip()
+    if not query:
+        return jsonify({"success": True, "papers": []})
+    
+    res = academic_search.search_academic_papers(query)
+    return jsonify(res)
+
+@app.route("/projects/<project_id>/literature/save", methods=["POST"])
+@login_required
+def save_paper(project_id):
+    user = session["user"]
+    title = request.form.get("title", "").strip()
+    authors_raw = request.form.get("authors", "[]")
+    abstract = request.form.get("abstract", "").strip()
+    year = request.form.get("year")
+    venue = request.form.get("venue", "").strip()
+    doi = request.form.get("doi", "").strip() or None
+    arxiv_id = request.form.get("arxiv_id", "").strip() or None
+    oa_pdf_url = request.form.get("open_access_pdf_url", "").strip() or None
+    
+    import json
+    try:
+        authors = json.loads(authors_raw) if isinstance(authors_raw, str) and authors_raw.startswith("[") else [authors_raw]
+    except Exception:
+        authors = [a.strip() for a in authors_raw.split(",") if a.strip()]
+        
+    year_int = int(year) if year and year.isdigit() else None
+    
+    paper_data = {
+        "title": title,
+        "authors": authors,
+        "abstract": abstract,
+        "year": year_int,
+        "venue": venue,
+        "doi": doi,
+        "arxiv_id": arxiv_id,
+        "open_access_pdf_url": oa_pdf_url
+    }
+    
+    res = papers_mgmt.save_paper_to_project(project_id, paper_data, user["id"])
+    if res["success"]:
+        flash(f"Paper '{title[:60]}...' saved to project library.", "success")
+    else:
+        flash(f"Could not save paper: {res.get('error')}", "error")
+        
+    return redirect(url_for("project_view", project_id=project_id, tab="literature"))
+
+@app.route("/projects/<project_id>/literature/<paper_id>/delete", methods=["POST"])
+@login_required
+def delete_paper(project_id):
+    user = session["user"]
+    res = papers_mgmt.delete_project_paper(project_id, paper_id, user["id"])
+    if res["success"]:
+        flash("Paper removed from library.", "info")
+    else:
+        flash(f"Failed to remove paper: {res.get('error')}", "error")
+    return redirect(url_for("project_view", project_id=project_id, tab="literature"))
+
+@app.route("/projects/<project_id>/literature/<paper_id>/pdf")
+@login_required
+def get_paper_pdf(project_id, paper_id):
+    user = session["user"]
+    # Check project membership
+    proj = db.get_project_details(project_id, user["id"])
+    if not proj:
+        flash("Access denied.", "error")
+        return redirect(url_for("dashboard"))
+    
+    pdf_path = os.path.join(papers_mgmt.UPLOADS_DIR, project_id, f"{paper_id}.pdf")
+    if os.path.exists(pdf_path):
+        return send_file(pdf_path, mimetype="application/pdf")
+    
+    flash("PDF is not cached locally or open access copy is unavailable.", "info")
+    return redirect(url_for("project_view", project_id=project_id, tab="literature"))
 
 @app.route("/projects/<project_id>/invite", methods=["POST"])
 @login_required
@@ -193,3 +304,4 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 5001))
     debug = os.getenv("FLASK_DEBUG", "True").lower() in ("true", "1")
     app.run(host="0.0.0.0", port=port, debug=debug)
+

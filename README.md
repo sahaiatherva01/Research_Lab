@@ -43,4 +43,14 @@ Open [http://localhost:5001](http://localhost:5001) in your browser.
 | **Backend** | Python + Flask | Unified language for routing, AI pipelines, and data manipulation |
 | **Database** | Supabase (PostgreSQL) + RLS | Relational integrity and DB-level role security (`Owner`, `Researcher`, `Viewer`) |
 | **Auth** | Supabase Auth (Email/Password + Google OAuth) | Secure, standards-compliant session management |
+| **Literature Search** | Semantic Scholar + arXiv APIs | Live academic discovery with citations, DOIs, and open-access PDFs |
 | **AI Layer** | Gemini API + FAISS + Sentence Transformers | Project-grounded RAG with explicit source citations |
+
+---
+
+## 📚 Features Overview
+
+- **Collaborative Workspaces:** Multi-user research projects with PostgreSQL RLS security (`Owner`, `Researcher`, `Viewer` roles).
+- **Literature Discovery:** Live search across millions of papers via Semantic Scholar Graph & arXiv APIs.
+- **Project Paper Library:** Save open-access literature, cache PDFs, and organize metadata with zero fabricated numbers.
+

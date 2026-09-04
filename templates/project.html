@@ -133,17 +133,215 @@
   </div>
 
 {% elif active_tab == 'literature' %}
-  <div class="card" style="text-align: center; padding: 3rem 2rem;">
-    <div class="empty-icon" style="background-color: rgba(6, 182, 212, 0.1); color: var(--accent-cyan);">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"></circle>
-        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-      </svg>
+  <div style="display: flex; flex-direction: column; gap: 2rem;">
+    
+    <!-- Search Bar for Academic Papers -->
+    <div class="card" style="background: linear-gradient(180deg, rgba(17, 24, 39, 0.95), rgba(31, 41, 55, 0.7)); border-color: rgba(6, 182, 212, 0.3);">
+      <div style="margin-bottom: 1rem;">
+        <h2 style="font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          Discover Academic Literature
+        </h2>
+        <p style="color: var(--text-secondary); font-size: 0.875rem;">
+          Search across millions of peer-reviewed papers on Semantic Scholar & arXiv to build this project's research grounding.
+        </p>
+      </div>
+
+      <form method="GET" action="{{ url_for('project_view', project_id=project.id) }}" style="display: flex; gap: 0.75rem;">
+        <input type="hidden" name="tab" value="literature">
+        <input type="text" name="q" value="{{ search_query }}" class="form-control" style="flex: 1; font-size: 0.95rem;" placeholder="Search by paper title, authors, or research topic (e.g. 'FlashAttention', 'Denoising Diffusion')..." required autofocus>
+        <button type="submit" class="btn btn-primary" id="btn-search-literature">
+          Search Literature
+        </button>
+      </form>
     </div>
-    <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">Literature Discovery & Library</h2>
-    <p style="color: var(--text-secondary); max-width: 480px; margin: 0 auto 1.5rem auto; font-size: 0.9rem;">
-      Ready for Literature slice: Search Semantic Scholar & arXiv, save open-access PDFs, highlight text, and ground AI Q&A in this library.
-    </p>
+
+    <!-- Search Results Section (if search performed) -->
+    {% if search_query %}
+      <div>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <h3 style="font-size: 1.1rem; font-weight: 700;">
+            Search Results for <span style="color: var(--accent-cyan);">"{{ search_query }}"</span>
+          </h3>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">{{ search_results | length }} papers found</span>
+        </div>
+
+        {% if search_error %}
+          <div class="flash-alert flash-error" style="margin-bottom: 1.5rem;">
+            {{ search_error }}
+          </div>
+        {% endif %}
+
+        {% if search_results %}
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            {% for paper in search_results %}
+              <div class="card card-hover" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;">
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; flex-wrap: wrap;">
+                      <span class="badge badge-researcher">{{ paper.source }}</span>
+                      {% if paper.year %}
+                        <span class="badge badge-viewer">{{ paper.year }}</span>
+                      {% endif %}
+                      {% if paper.venue %}
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">{{ paper.venue }}</span>
+                      {% endif %}
+                      {% if paper.citation_count > 0 %}
+                        <span style="font-size: 0.75rem; color: var(--accent-amber);">★ {{ paper.citation_count }} citations</span>
+                      {% endif %}
+                    </div>
+                    <h4 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">
+                      {{ paper.title }}
+                    </h4>
+                  </div>
+
+                  {% if project.user_role in ('owner', 'researcher') %}
+                    <form method="POST" action="{{ url_for('save_paper', project_id=project.id) }}">
+                      <input type="hidden" name="title" value="{{ paper.title }}">
+                      <input type="hidden" name="authors" value="{{ paper.authors | tojson }}">
+                      <input type="hidden" name="abstract" value="{{ paper.abstract }}">
+                      <input type="hidden" name="year" value="{{ paper.year or '' }}">
+                      <input type="hidden" name="venue" value="{{ paper.venue or '' }}">
+                      <input type="hidden" name="doi" value="{{ paper.doi or '' }}">
+                      <input type="hidden" name="arxiv_id" value="{{ paper.arxiv_id or '' }}">
+                      <input type="hidden" name="open_access_pdf_url" value="{{ paper.open_access_pdf_url or '' }}">
+                      <button type="submit" class="btn btn-secondary btn-sm" title="Save to Project Library">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                        Save to Library
+                      </button>
+                    </form>
+                  {% endif %}
+                </div>
+
+                {% if paper.authors %}
+                  <div style="font-size: 0.825rem; color: var(--text-secondary);">
+                    <strong>Authors:</strong> {{ paper.authors | join(', ') }}
+                  </div>
+                {% endif %}
+
+                <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5;">
+                  {{ paper.abstract | truncate(260) }}
+                </p>
+
+                <div style="display: flex; align-items: center; gap: 1rem; font-size: 0.8rem; margin-top: 0.25rem;">
+                  {% if paper.open_access_pdf_url %}
+                    <a href="{{ paper.open_access_pdf_url }}" target="_blank" rel="noopener" style="color: var(--accent-cyan); text-decoration: none; display: flex; align-items: center; gap: 0.25rem;">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                      Open Access PDF
+                    </a>
+                  {% endif %}
+                  {% if paper.doi %}
+                    <span style="color: var(--text-muted);">DOI: {{ paper.doi }}</span>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state" style="padding: 2.5rem 1rem;">
+            <p class="empty-desc">No academic papers matched your search query. Try broadening your keywords.</p>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <!-- Saved Library Section -->
+    <div>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+        <div>
+          <h3 style="font-size: 1.2rem; font-weight: 700;">Project Paper Library</h3>
+          <p style="font-size: 0.85rem; color: var(--text-secondary);">Saved literature used for RAG grounding and citation receipts.</p>
+        </div>
+        <span class="badge badge-researcher">{{ saved_papers | length }} Saved Papers</span>
+      </div>
+
+      {% if saved_papers %}
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+          {% for p in saved_papers %}
+            <div class="card" style="display: flex; flex-direction: column; gap: 0.75rem;" id="saved-paper-{{ p.id }}">
+              <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;">
+                <div>
+                  <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; flex-wrap: wrap;">
+                    {% if p.year %}
+                      <span class="badge badge-viewer">{{ p.year }}</span>
+                    {% endif %}
+                    {% if p.venue %}
+                      <span style="font-size: 0.75rem; color: var(--accent-cyan);">{{ p.venue }}</span>
+                    {% endif %}
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Added by {{ p.added_by_name }}</span>
+                  </div>
+                  <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">
+                    {{ p.title }}
+                  </h4>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  {% if p.storage_path %}
+                    <a href="{{ url_for('get_paper_pdf', project_id=project.id, paper_id=p.id) }}" target="_blank" class="btn btn-outline btn-sm" title="View Cached PDF">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                      Read PDF
+                    </a>
+                  {% elif p.open_access_pdf_url %}
+                    <a href="{{ p.open_access_pdf_url }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">
+                      External PDF
+                    </a>
+                  {% endif %}
+
+                  {% if project.user_role in ('owner', 'researcher') %}
+                    <form method="POST" action="{{ url_for('delete_paper', project_id=project.id, paper_id=p.id) }}" onsubmit="return confirm('Remove paper from library?');">
+                      <button type="submit" class="btn btn-outline btn-sm" style="color: var(--accent-rose); border-color: rgba(239, 68, 68, 0.3);" title="Remove paper">
+                        &times;
+                      </button>
+                    </form>
+                  {% endif %}
+                </div>
+              </div>
+
+              {% if p.authors %}
+                <div style="font-size: 0.825rem; color: var(--text-secondary);">
+                  <strong>Authors:</strong> {{ p.authors | join(', ') if p.authors is iterable and p.authors is not string else p.authors }}
+                </div>
+              {% endif %}
+
+              {% if p.abstract %}
+                <p style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;">
+                  {{ p.abstract }}
+                </p>
+              {% endif %}
+
+              <div style="display: flex; align-items: center; gap: 1.5rem; font-size: 0.75rem; color: var(--text-muted); padding-top: 0.5rem; border-top: 1px solid var(--border-subtle);">
+                {% if p.doi %}
+                  <span>DOI: <code>{{ p.doi }}</code></span>
+                {% endif %}
+                {% if p.arxiv_id %}
+                  <span>arXiv: <code>{{ p.arxiv_id }}</code></span>
+                {% endif %}
+                <span>Saved on {{ p.created_at[:10] }}</span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <div class="empty-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+            </svg>
+          </div>
+          <h4 class="empty-title">Your Paper Library is Empty</h4>
+          <p class="empty-desc">
+            Search for papers using the search bar above to save foundational literature and ground your project's research AI.
+          </p>
+        </div>
+      {% endif %}
+    </div>
+
   </div>
 
 {% elif active_tab == 'notes' %}
