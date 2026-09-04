@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import uuid
+import json
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
@@ -1022,6 +1023,7 @@ def delete_knowledge_node(project_id, node_id, user_id):
     """Delete a knowledge node and its connected edges."""
     if IS_SUPABASE_CONFIGURED and supabase_client:
         try:
+            supabase_client.table("knowledge_edges").delete().eq("project_id", project_id).or_(f"source_node_id.eq.{node_id},target_node_id.eq.{node_id}").execute()
             supabase_client.table("knowledge_nodes").delete().eq("id", node_id).eq("project_id", project_id).execute()
             return {"success": True}
         except Exception as e:
@@ -1030,6 +1032,7 @@ def delete_knowledge_node(project_id, node_id, user_id):
         conn = sqlite3.connect(LOCAL_DB_PATH)
         c = conn.cursor()
         try:
+            c.execute("DELETE FROM knowledge_edges WHERE project_id = ? AND (source_node_id = ? OR target_node_id = ?)", (project_id, node_id, node_id))
             c.execute("DELETE FROM knowledge_nodes WHERE id = ? AND project_id = ?", (node_id, project_id))
             conn.commit()
             return {"success": True}
@@ -1042,6 +1045,7 @@ def clear_project_knowledge_graph(project_id, user_id):
     """Reset the knowledge graph for a project."""
     if IS_SUPABASE_CONFIGURED and supabase_client:
         try:
+            supabase_client.table("knowledge_edges").delete().eq("project_id", project_id).execute()
             supabase_client.table("knowledge_nodes").delete().eq("project_id", project_id).execute()
             return {"success": True}
         except Exception as e:
@@ -1050,6 +1054,7 @@ def clear_project_knowledge_graph(project_id, user_id):
         conn = sqlite3.connect(LOCAL_DB_PATH)
         c = conn.cursor()
         try:
+            c.execute("DELETE FROM knowledge_edges WHERE project_id = ?", (project_id,))
             c.execute("DELETE FROM knowledge_nodes WHERE project_id = ?", (project_id,))
             conn.commit()
             return {"success": True}

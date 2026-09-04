@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 import database
+import research.papers as papers_mgmt
 from research.papers import get_project_papers
 from research.pdf_reader import extract_pdf_chunks
 
@@ -187,7 +188,10 @@ def extract_project_knowledge_graph(project_id, user_id, paper_id=None):
         abstract = paper.get("abstract", "") or ""
 
         # Collect text from PDF chunks or abstract
-        pdf_chunks = extract_pdf_chunks(project_id, p_id)
+        pdf_path = os.path.join(papers_mgmt.UPLOADS_DIR, project_id, f"{p_id}.pdf")
+        pdf_chunks_res = extract_pdf_chunks(pdf_path) if os.path.exists(pdf_path) else {}
+        pdf_chunks = pdf_chunks_res.get("chunks", []) if pdf_chunks_res.get("success") else []
+        
         combined_text = f"Title: {title}\n\nAbstract: {abstract}\n\n"
         if pdf_chunks:
             # Take representative chunk text

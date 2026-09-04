@@ -57,8 +57,10 @@ Open [http://localhost:5001](http://localhost:5001) in your browser.
 - **Project Paper Library:** Save open-access literature, cache PDFs, and organize metadata with zero fabricated numbers.
 - **In-App Reader & Annotations:** Read extracted papers in-browser, highlight passages with semantic tags, and collaborate on margin notes with team members.
 - **Project-Scoped Research AI (RAG):** Local FAISS vector search powered by Sentence Transformers. Answers literature questions strictly grounded in saved papers with explicit `[Paper Title, p. X]` receipts.
+- **Knowledge & Concept Graph:** Dynamic ontology extraction across literature (`methods`, `datasets`, `tasks`, `metrics`, `concepts`) with directed relationship links and passage quote receipts. Interactive canvas visualizer with physics force simulation, category filters, and concept matrix.
 - **Research Notes & Journal:** Timestamped markdown notes capturing team observations, methodology logs, and direct AI synthesis captures.
 - **Git Version Control & File Tree:** Auto-initialized local Git repository per project with real commit history, file browsing, and milestone tracking.
+
 
 
 
