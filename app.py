@@ -164,6 +164,7 @@ from flask import send_file
 
 import ai.research_agent as research_agent
 import research.rag as rag
+import research.git_tracker as git_tracker
 
 @app.route("/projects/<project_id>")
 @login_required
@@ -180,6 +181,7 @@ def project_view(project_id):
     saved_papers = []
     search_results = []
     search_error = None
+    notes = []
     index_status = {"indexed": False, "total_chunks": 0}
     
     if active_tab in ("literature", "ai"):
@@ -192,6 +194,9 @@ def project_view(project_id):
         else:
             search_error = search_res.get("error")
             
+    if active_tab == "notes":
+        notes = db.get_project_notes(project_id, user["id"])
+            
     if active_tab == "ai":
         index_path, meta_path = rag.get_project_index_paths(project_id)
         if os.path.exists(index_path) and os.path.exists(meta_path):
@@ -202,6 +207,28 @@ def project_view(project_id):
                     index_status = {"indexed": True, "total_chunks": len(meta)}
             except Exception:
                 index_status = {"indexed": True, "total_chunks": 0}
+
+    selected_file_path = request.args.get("file", "").strip()
+    file_content = None
+    file_tree = []
+    commits = []
+    
+    if active_tab == "git":
+        commits = git_tracker.get_commit_history(project_id)
+        file_tree = git_tracker.get_project_file_tree(project_id)
+        if selected_file_path:
+            f_res = git_tracker.get_file_content(project_id, selected_file_path)
+            if f_res.get("success"):
+                file_content = f_res.get("content")
+        elif file_tree:
+            # Default to README.md
+            readme = next((f for f in file_tree if f["name"] == "README.md"), None)
+            if readme:
+                selected_file_path = "README.md"
+                f_res = git_tracker.get_file_content(project_id, "README.md")
+                if f_res.get("success"):
+                    file_content = f_res.get("content")
+
                 
     return render_template(
         "project.html", 
@@ -211,8 +238,88 @@ def project_view(project_id):
         search_query=search_query,
         search_results=search_results,
         search_error=search_error,
-        index_status=index_status
+        index_status=index_status,
+        notes=notes,
+        commits=commits,
+        file_tree=file_tree,
+        selected_file_path=selected_file_path,
+        file_content=file_content
     )
+
+@app.route("/projects/<project_id>/git/commit", methods=["POST"])
+@login_required
+def project_git_commit(project_id):
+    user = session["user"]
+    file_path = request.form.get("file_path", "").strip()
+    content = request.form.get("content", "")
+    message = request.form.get("message", "").strip()
+    
+    if not file_path or not message:
+        flash("File path and commit message are required.", "error")
+        return redirect(url_for("project_view", project_id=project_id, tab="git"))
+        
+    res = git_tracker.save_and_commit_file(
+        project_id=project_id,
+        relative_path=file_path,
+        content=content,
+        message=message,
+        author_name=user.get("full_name", "Lab Researcher"),
+        author_email=user.get("email", "researcher@lab.local")
+    )
+    if res.get("success"):
+        flash(f"Git commit created: '{message}'", "success")
+    else:
+        flash(f"Commit failed: {res.get('output')}", "error")
+        
+    return redirect(url_for("project_view", project_id=project_id, tab="git", file=file_path))
+
+
+@app.route("/projects/<project_id>/notes/new", methods=["POST"])
+@login_required
+def new_note(project_id):
+    user = session["user"]
+    title = request.form.get("title", "").strip() or "Untitled Research Note"
+    content = request.form.get("content", "").strip()
+    
+    if not content:
+        flash("Note content cannot be empty.", "error")
+        return redirect(url_for("project_view", project_id=project_id, tab="notes"))
+        
+    res = db.create_research_note(project_id, title, content, user["id"])
+    if res["success"]:
+        flash(f"Research note '{title}' created.", "success")
+    else:
+        flash(f"Could not create note: {res.get('error')}", "error")
+        
+    return redirect(url_for("project_view", project_id=project_id, tab="notes"))
+
+@app.route("/projects/<project_id>/notes/<note_id>/update", methods=["POST"])
+@login_required
+def update_note(project_id, note_id):
+    user = session["user"]
+    title = request.form.get("title", "").strip() or "Untitled Note"
+    content = request.form.get("content", "").strip()
+    
+    res = db.update_research_note(project_id, note_id, title, content, user["id"])
+    if res["success"]:
+        flash("Note updated.", "success")
+    else:
+        flash(f"Could not update note: {res.get('error')}", "error")
+        
+    return redirect(url_for("project_view", project_id=project_id, tab="notes"))
+
+@app.route("/projects/<project_id>/notes/<note_id>/delete", methods=["POST"])
+@login_required
+def delete_note(project_id, note_id):
+    user = session["user"]
+    res = db.delete_research_note(project_id, note_id, user["id"])
+    if res["success"]:
+        flash("Note deleted.", "info")
+    else:
+        flash(f"Failed to delete note: {res.get('error')}", "error")
+        
+    return redirect(url_for("project_view", project_id=project_id, tab="notes"))
+
 
 @app.route("/projects/<project_id>/ai/ask", methods=["POST"])
 @login_required

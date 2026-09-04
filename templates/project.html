@@ -57,6 +57,11 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
       AI Assistant (RAG)
     </a>
+    <a href="{{ url_for('project_view', project_id=project.id, tab='git') }}" 
+       class="tab-btn {{ 'active' if active_tab == 'git' else '' }}" id="tab-btn-git">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
+      Git & Files ({{ commits | length if commits else 0 }})
+    </a>
     <a href="{{ url_for('project_view', project_id=project.id, tab='team') }}" 
        class="tab-btn {{ 'active' if active_tab == 'team' else '' }}" id="tab-btn-team">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -428,6 +433,13 @@
 
         <div id="ai-answer-text" style="font-size: 0.95rem; line-height: 1.7; color: #F1F5F9; white-space: pre-wrap; margin-bottom: 1.5rem;"></div>
 
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 1.25rem;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="saveAiAnswerToNote()" title="Capture this synthesis in project notes">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+            Save as Research Note
+          </button>
+        </div>
+
         <!-- Citation Receipts Drawer -->
         <div>
           <h4 style="font-size: 0.85rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">
@@ -436,6 +448,7 @@
           <div id="ai-sources-list" style="display: flex; flex-direction: column; gap: 0.6rem;"></div>
         </div>
       </div>
+
 
     {% else %}
       <div class="empty-state">
@@ -455,18 +468,282 @@
   </div>
 
 {% elif active_tab == 'notes' %}
-
-  <div class="card" style="text-align: center; padding: 3rem 2rem;">
-    <div class="empty-icon" style="background-color: rgba(99, 102, 241, 0.1); color: var(--accent-primary);">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-        <polyline points="14 2 14 8 20 8"></polyline>
-      </svg>
+  <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <h2 style="font-size: 1.25rem; font-weight: 700;">Research Notes & Journal</h2>
+        <p style="color: var(--text-secondary); font-size: 0.85rem;">Timestamped observations, hypotheses, and literature synthesis shared with your team.</p>
+      </div>
+      {% if project.user_role in ('owner', 'researcher') %}
+        <button class="btn btn-primary btn-sm" onclick="openModal('modal-new-note')" id="btn-create-note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          New Note
+        </button>
+      {% endif %}
     </div>
-    <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">Research Notes</h2>
-    <p style="color: var(--text-secondary); max-width: 480px; margin: 0 auto 1.5rem auto; font-size: 0.9rem;">
-      Ready for Notes slice: Write timestamped research logs, observations, and methodology drafts shared across your team.
-    </p>
+
+    {% if notes %}
+      <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+        {% for note in notes %}
+          <div class="card" id="note-card-{{ note.id }}" style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
+              <div>
+                <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.25rem;">
+                  {{ note.title }}
+                </h3>
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: var(--text-muted);">
+                  <span>By <strong>{{ note.author_name }}</strong></span>
+                  <span>&bull;</span>
+                  <span>Created {{ note.created_at[:10] }}</span>
+                  {% if note.updated_at and note.updated_at[:19] != note.created_at[:19] %}
+                    <span>&bull;</span>
+                    <span style="color: var(--accent-cyan);">Edited {{ note.updated_at[:10] }}</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              {% if project.user_role in ('owner', 'researcher') %}
+                <div style="display: flex; align-items: center; gap: 0.4rem;">
+                  <button class="btn btn-outline btn-sm" onclick="openEditNoteModal('{{ note.id }}', '{{ note.title | escape }}', '{{ note.content | escape }}')">
+                    Edit
+                  </button>
+                  <form method="POST" action="{{ url_for('delete_note', project_id=project.id, note_id=note.id) }}" onsubmit="return confirm('Delete this research note?');">
+                    <button type="submit" class="btn btn-outline btn-sm" style="color: var(--accent-rose); border-color: rgba(239, 68, 68, 0.3);">
+                      &times;
+                    </button>
+                  </form>
+                </div>
+              {% endif %}
+            </div>
+
+            <div style="font-size: 0.925rem; line-height: 1.7; color: #E2E8F0; white-space: pre-wrap; font-family: var(--font-sans);">
+              {{ note.content }}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <div class="empty-icon" style="color: var(--accent-primary);">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </div>
+        <h3 class="empty-title">No Research Notes Yet</h3>
+        <p class="empty-desc">
+          Capture ongoing hypotheses, experiment designs, and synthesis points shared across your lab.
+        </p>
+        {% if project.user_role in ('owner', 'researcher') %}
+          <button class="btn btn-primary" onclick="openModal('modal-new-note')">
+            Create First Note
+          </button>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- New Note Modal -->
+  <div class="modal-backdrop" id="modal-new-note">
+    <div class="modal-card" style="max-width: 650px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Create Research Note</h2>
+        <button onclick="closeModal('modal-new-note')" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.5rem;">&times;</button>
+      </div>
+      <form method="POST" action="{{ url_for('new_note', project_id=project.id) }}">
+        <div class="form-group">
+          <label for="note-title">Note Title *</label>
+          <input type="text" id="note-title" name="title" class="form-control" placeholder="e.g. Observations on Baseline Comparison" required>
+        </div>
+        <div class="form-group">
+          <label for="note-content">Note Content (Markdown supported) *</label>
+          <textarea id="note-content" name="content" class="form-control" style="min-height: 180px;" placeholder="Document your methodology notes, thoughts, and synthesis..." required></textarea>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-note')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-note">Save Note</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Note Modal -->
+  <div class="modal-backdrop" id="modal-edit-note">
+    <div class="modal-card" style="max-width: 650px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Edit Research Note</h2>
+        <button onclick="closeModal('modal-edit-note')" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.5rem;">&times;</button>
+      </div>
+      <form id="edit-note-form" method="POST" action="">
+        <div class="form-group">
+          <label for="edit-note-title">Note Title *</label>
+          <input type="text" id="edit-note-title" name="title" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label for="edit-note-content">Note Content (Markdown supported) *</label>
+          <textarea id="edit-note-content" name="content" class="form-control" style="min-height: 180px;" required></textarea>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit-note')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Update Note</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+{% elif active_tab == 'git' %}
+  <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+    <!-- Git Header -->
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+          <h2 style="font-size: 1.25rem; font-weight: 700;">Git Version Control & Files</h2>
+          <span class="badge badge-live">Git Initialized</span>
+        </div>
+        <p style="color: var(--text-secondary); font-size: 0.85rem;">
+          Real Git repository mapped to this project workspace. Every commit is tracked with standard cryptographic hashes.
+        </p>
+      </div>
+
+      {% if project.user_role in ('owner', 'researcher') %}
+        <button class="btn btn-primary btn-sm" onclick="openModal('modal-new-file')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          New File
+        </button>
+      {% endif %}
+    </div>
+
+    <!-- Dual View: File Explorer & Inspector -->
+    <div style="display: grid; grid-template-columns: 280px 1fr; gap: 1.5rem;">
+      
+      <!-- File Tree Sidebar -->
+      <div class="card" style="padding: 1.25rem; height: fit-content;">
+        <h3 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 1rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
+          Project Tree
+        </h3>
+        
+        <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+          {% for item in file_tree %}
+            {% if item.is_dir %}
+              <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.5rem; color: var(--accent-cyan); font-size: 0.85rem; font-weight: 600;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span>{{ item.name }}/</span>
+              </div>
+            {% else %}
+              <a href="{{ url_for('project_view', project_id=project.id, tab='git', file=item.path) }}" 
+                 style="display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0.6rem; border-radius: var(--radius-sm); text-decoration: none; font-size: 0.85rem; color: {{ 'var(--text-primary)' if selected_file_path == item.path else 'var(--text-secondary)' }}; background: {{ 'var(--bg-surface-elevated)' if selected_file_path == item.path else 'transparent' }}; border: 1px solid {{ 'var(--border-strong)' if selected_file_path == item.path else 'transparent' }};">
+                <div style="display: flex; align-items: center; gap: 0.45rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                  <span>{{ item.name }}</span>
+                </div>
+                <span style="font-size: 0.7rem; color: var(--text-muted);">{{ (item.size / 1024) | round(1) }} KB</span>
+              </a>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- File Content Viewer / Editor -->
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        {% if selected_file_path and file_content is not none %}
+          <div class="card" style="padding: 1.5rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-family: var(--font-mono); font-size: 0.95rem; font-weight: 700; color: var(--accent-cyan);">
+                  {{ selected_file_path }}
+                </span>
+              </div>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">UTF-8 Text</span>
+            </div>
+
+            {% if project.user_role in ('owner', 'researcher') %}
+              <form method="POST" action="{{ url_for('project_git_commit', project_id=project.id) }}">
+                <input type="hidden" name="file_path" value="{{ selected_file_path }}">
+                
+                <div class="form-group" style="margin-bottom: 1rem;">
+                  <textarea name="content" class="form-control" style="font-family: var(--font-mono); font-size: 0.875rem; min-height: 240px; line-height: 1.6; background: #0B0F19;">{{ file_content }}</textarea>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 0.75rem; background: var(--bg-surface-elevated); padding: 0.75rem; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+                  <input type="text" name="message" class="form-control" style="flex: 1; font-size: 0.85rem;" placeholder="Commit message (e.g. Update experiment parameter configurations)..." required>
+                  <button type="submit" class="btn btn-primary btn-sm">
+                    Commit Changes
+                  </button>
+                </div>
+              </form>
+            {% else %}
+              <pre style="font-family: var(--font-mono); font-size: 0.875rem; line-height: 1.6; color: #E2E8F0; background: #0B0F19; padding: 1rem; border-radius: var(--radius-md); overflow-x: auto; white-space: pre-wrap;">{{ file_content }}</pre>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="card" style="padding: 2.5rem 1.5rem; text-align: center;">
+            <p style="color: var(--text-secondary); margin: 0;">Select a file from the repository tree to inspect or edit.</p>
+          </div>
+        {% endif %}
+
+        <!-- Commit History Timeline -->
+        <div class="card" style="padding: 1.5rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
+            <h3 style="font-size: 1.05rem; font-weight: 700;">Git Commit History</h3>
+            <span class="badge badge-viewer">{{ commits | length }} Commits</span>
+          </div>
+
+          {% if commits %}
+            <div style="display: flex; flex-direction: column; gap: 0.85rem;">
+              {% for c in commits %}
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 0.75rem 1rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); gap: 1rem;">
+                  <div>
+                    <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.2rem;">
+                      {{ c.message }}
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">
+                      <span>{{ c.author_name }}</span> &bull; <span>{{ c.date }}</span>
+                    </div>
+                  </div>
+                  <code style="font-family: var(--font-mono); font-size: 0.75rem; background: rgba(99, 102, 241, 0.15); color: #A5B4FC; padding: 0.2rem 0.5rem; border-radius: var(--radius-sm); border: 1px solid rgba(99, 102, 241, 0.3);">
+                    {{ c.short_hash }}
+                  </code>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 1.5rem 0;">
+              No commits yet.
+            </div>
+          {% endif %}
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- New File Modal -->
+  <div class="modal-backdrop" id="modal-new-file">
+    <div class="modal-card" style="max-width: 650px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Create New Repository File</h2>
+        <button onclick="closeModal('modal-new-file')" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.5rem;">&times;</button>
+      </div>
+      <form method="POST" action="{{ url_for('project_git_commit', project_id=project.id) }}">
+        <div class="form-group">
+          <label for="new-file-path">File Path (relative to repo root) *</label>
+          <input type="text" id="new-file-path" name="file_path" class="form-control" placeholder="e.g. src/model.py or experiments/baseline.json" required>
+        </div>
+        <div class="form-group">
+          <label for="new-file-content">File Content *</label>
+          <textarea id="new-file-content" name="content" class="form-control" style="font-family: var(--font-mono); min-height: 180px;" placeholder="# Write your code or experiment spec here..." required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="new-file-msg">Initial Commit Message *</label>
+          <input type="text" id="new-file-msg" name="message" class="form-control" placeholder="e.g. Add baseline model specification" required>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-file')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create & Commit</button>
+        </div>
+      </form>
+    </div>
   </div>
 
 {% elif active_tab == 'team' %}
@@ -604,6 +881,27 @@
       btn.innerHTML = `<span>Query Literature AI</span>`;
       alert("Error contacting Research AI: " + err);
     }
+  }
+
+  function openEditNoteModal(noteId, title, content) {
+
+    const form = document.getElementById('edit-note-form');
+    if (form) {
+      form.action = `/projects/{{ project.id }}/notes/${noteId}/update`;
+      document.getElementById('edit-note-title').value = title;
+      document.getElementById('edit-note-content').value = content;
+      openModal('modal-edit-note');
+    }
+  }
+
+  function saveAiAnswerToNote() {
+    const q = document.getElementById('ai-question').value;
+    const answer = document.getElementById('ai-answer-text').textContent;
+    if (!answer) return;
+
+    document.getElementById('note-title').value = `Synthesis: ${q.slice(0, 60)}`;
+    document.getElementById('note-content').value = `### Research Question\n${q}\n\n### Grounded Synthesis\n${answer}`;
+    openModal('modal-new-note');
   }
 </script>
 <style>

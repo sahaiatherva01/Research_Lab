@@ -338,6 +338,8 @@ def create_project(title, research_question, domain, description, user_id):
                 "joined_at": ts
             }
             supabase_client.table("project_members").insert(member_data).execute()
+            import research.git_tracker as git_tracker
+            git_tracker.init_project_repo(project_id, title=title, research_question=research_question, description=description)
             return {"success": True, "project_id": project_id}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -356,6 +358,8 @@ def create_project(title, research_question, domain, description, user_id):
                 (member_id, project_id, user_id, "owner", ts)
             )
             conn.commit()
+            import research.git_tracker as git_tracker
+            git_tracker.init_project_repo(project_id, title=title, research_question=research_question, description=description)
             return {"success": True, "project_id": project_id}
         except Exception as e:
             return {"success": False, "error": str(e)}
