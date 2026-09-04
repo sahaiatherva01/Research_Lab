@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}AI Research Lab{% endblock %} — Collaborative Research IDE</title>
+  <meta name="description" content="AI Research Lab — A collaborative research IDE built specifically for researchers.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <header class="app-header">
+    <div style="display: flex; align-items: center; gap: 1.5rem;">
+      <a href="{{ url_for('dashboard') if current_user else url_for('login') }}" class="brand" id="brand-logo">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <span>AI Research Lab</span>
+      </a>
+      
+      {% if is_supabase_live %}
+        <span class="badge badge-live" title="Connected to live Supabase PostgreSQL & Auth">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: #10B981; display: inline-block;"></span>
+          Supabase Connected
+        </span>
+      {% else %}
+        <span class="badge badge-local" title="Running in Local SQLite Dev Mode. Configure SUPABASE_URL in .env to connect live.">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: #F59E0B; display: inline-block;"></span>
+          Local Storage Mode
+        </span>
+      {% endif %}
+    </div>
+
+    <nav class="header-nav">
+      {% if current_user %}
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-sm" id="nav-dashboard">Projects</a>
+        <div class="user-menu" id="user-menu">
+          <div class="avatar" title="{{ current_user.email }}">
+            {{ current_user.full_name[0] | upper if current_user.full_name else 'U' }}
+          </div>
+          <div class="user-info">
+            <span class="user-name">{{ current_user.full_name }}</span>
+            <span class="user-email">{{ current_user.email }}</span>
+          </div>
+          <a href="{{ url_for('logout') }}" class="btn btn-outline btn-sm" id="btn-logout" title="Sign out" style="margin-left: 0.5rem;">
+            Sign Out
+          </a>
+        </div>
+      {% else %}
+        <a href="{{ url_for('login') }}" class="btn btn-outline btn-sm">Sign In</a>
+        <a href="{{ url_for('signup') }}" class="btn btn-primary btn-sm">Get Started</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <main class="main-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-container">
+          {% for category, message in messages %}
+            <div class="flash-alert flash-{{ category }}">
+              <span>{{ message }}</span>
+              <button onclick="this.parentElement.remove()" style="background:none; border:none; color:inherit; cursor:pointer; font-size:1.1rem; line-height:1;">&times;</button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts_extra %}{% endblock %}
+</body>
+</html>

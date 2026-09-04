@@ -1,0 +1,46 @@
+# AI Research Lab
+
+> A collaborative Research IDE: VS Code + GitHub + Jupyter + Overleaf + an AI research assistant — built specifically for research.
+
+---
+
+## ⚡ Quickstart
+
+### 1. Set Up Environment & Install Dependencies
+```bash
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install requirements
+pip install -r requirements.txt
+```
+
+### 2. Configure Environment Variables
+Copy `.env.example` to `.env`:
+```bash
+cp .env.example .env
+```
+
+*Note: If `SUPABASE_URL` and `SUPABASE_ANON_KEY` are not provided, AI Research Lab runs seamlessly in Local Development Storage Mode with full schema and role enforcement.*
+
+### 3. Initialize Database (for Live Supabase)
+Execute the SQL statements from `schema.sql` directly in your Supabase SQL Editor. This provisions the tables (`profiles`, `projects`, `project_members`, `papers`, `research_notes`) and enables Row-Level Security (RLS) policies.
+
+### 4. Run Development Server
+```bash
+python app.py
+```
+Open [http://localhost:5001](http://localhost:5001) in your browser.
+
+---
+
+## 🔬 Architecture & Technology Stack
+
+| Component | Choice | Rationale |
+|---|---|---|
+| **Frontend** | HTML5 + CSS3 + Vanilla JavaScript | No framework churn or complex build steps; clean and maintainable |
+| **Backend** | Python + Flask | Unified language for routing, AI pipelines, and data manipulation |
+| **Database** | Supabase (PostgreSQL) + RLS | Relational integrity and DB-level role security (`Owner`, `Researcher`, `Viewer`) |
+| **Auth** | Supabase Auth (Email/Password + Google OAuth) | Secure, standards-compliant session management |
+| **AI Layer** | Gemini API + FAISS + Sentence Transformers | Project-grounded RAG with explicit source citations |
