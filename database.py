@@ -129,8 +129,41 @@ def _init_local_db():
     );
     """)
     
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS knowledge_nodes (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL CHECK (category IN ('method', 'dataset', 'task', 'metric', 'concept')),
+        description TEXT,
+        source_paper_ids TEXT DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        UNIQUE(project_id, name),
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS knowledge_edges (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        source_node_id TEXT NOT NULL,
+        target_node_id TEXT NOT NULL,
+        relation_type TEXT NOT NULL,
+        evidence TEXT,
+        source_paper_id TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(project_id, source_node_id, target_node_id, relation_type),
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+        FOREIGN KEY (source_node_id) REFERENCES knowledge_nodes(id) ON DELETE CASCADE,
+        FOREIGN KEY (target_node_id) REFERENCES knowledge_nodes(id) ON DELETE CASCADE,
+        FOREIGN KEY (source_paper_id) REFERENCES papers(id) ON DELETE SET NULL
+    );
+    """)
+    
     conn.commit()
     conn.close()
+
 
 
 
@@ -781,5 +814,249 @@ def delete_research_note(project_id, note_id, user_id):
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
+
+# --- Knowledge Graph Helpers ---
+
+def add_or_update_knowledge_node(project_id, name, category, description="", source_paper_id=None):
+    """Add or update an extracted knowledge node."""
+    name = name.strip()
+    category = category.lower().strip()
+    if category not in ('method', 'dataset', 'task', 'metric', 'concept'):
+        category = 'concept'
+        
+    node_id = str(uuid.uuid4())
+    ts = now_iso()
+    source_papers = [source_paper_id] if source_paper_id else []
+    
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            # Check existing node with same project_id and name
+            existing = supabase_client.table("knowledge_nodes").select("*").eq("project_id", project_id).ilike("name", name).execute()
+            if existing.data:
+                node = existing.data[0]
+                existing_papers = json.loads(node.get("source_paper_ids") or "[]") if isinstance(node.get("source_paper_ids"), str) else (node.get("source_paper_ids") or [])
+                if source_paper_id and source_paper_id not in existing_papers:
+                    existing_papers.append(source_paper_id)
+                
+                updated_desc = description.strip() if description.strip() else node.get("description", "")
+                supabase_client.table("knowledge_nodes").update({
+                    "description": updated_desc,
+                    "source_paper_ids": json.dumps(existing_papers)
+                }).eq("id", node["id"]).execute()
+                return {"success": True, "node_id": node["id"], "is_new": False}
+            else:
+                supabase_client.table("knowledge_nodes").insert({
+                    "id": node_id,
+                    "project_id": project_id,
+                    "name": name,
+                    "category": category,
+                    "description": description.strip(),
+                    "source_paper_ids": json.dumps(source_papers),
+                    "created_at": ts
+                }).execute()
+                return {"success": True, "node_id": node_id, "is_new": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        c = conn.cursor()
+        try:
+            c.execute("SELECT id, description, source_paper_ids FROM knowledge_nodes WHERE project_id = ? AND LOWER(name) = ?", (project_id, name.lower()))
+            row = c.fetchone()
+            if row:
+                nid, curr_desc, curr_papers_raw = row
+                try:
+                    papers_list = json.loads(curr_papers_raw) if curr_papers_raw else []
+                except Exception:
+                    papers_list = []
+                if source_paper_id and source_paper_id not in papers_list:
+                    papers_list.append(source_paper_id)
+                new_desc = description.strip() if description.strip() else (curr_desc or "")
+                c.execute("UPDATE knowledge_nodes SET description = ?, source_paper_ids = ? WHERE id = ?", (new_desc, json.dumps(papers_list), nid))
+                conn.commit()
+                return {"success": True, "node_id": nid, "is_new": False}
+            else:
+                c.execute("""
+                    INSERT INTO knowledge_nodes (id, project_id, name, category, description, source_paper_ids, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (node_id, project_id, name, category, description.strip(), json.dumps(source_papers), ts))
+                conn.commit()
+                return {"success": True, "node_id": node_id, "is_new": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+def add_knowledge_edge(project_id, source_node_id, target_node_id, relation_type, evidence="", source_paper_id=None):
+    """Add or update a directed relationship edge between two concepts."""
+    if source_node_id == target_node_id:
+        return {"success": False, "error": "Self-loops are not permitted."}
+    relation_type = relation_type.lower().strip()
+    edge_id = str(uuid.uuid4())
+    ts = now_iso()
+    
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            supabase_client.table("knowledge_edges").upsert({
+                "id": edge_id,
+                "project_id": project_id,
+                "source_node_id": source_node_id,
+                "target_node_id": target_node_id,
+                "relation_type": relation_type,
+                "evidence": evidence.strip(),
+                "source_paper_id": source_paper_id,
+                "created_at": ts
+            }, on_conflict="project_id, source_node_id, target_node_id, relation_type").execute()
+            return {"success": True, "edge_id": edge_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON;")
+        c = conn.cursor()
+        try:
+            c.execute("""
+                INSERT INTO knowledge_edges (id, project_id, source_node_id, target_node_id, relation_type, evidence, source_paper_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, source_node_id, target_node_id, relation_type) 
+                DO UPDATE SET evidence = excluded.evidence, source_paper_id = excluded.source_paper_id
+            """, (edge_id, project_id, source_node_id, target_node_id, relation_type, evidence.strip(), source_paper_id, ts))
+            conn.commit()
+            return {"success": True, "edge_id": edge_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+def get_project_knowledge_graph(project_id, user_id):
+    """Fetch complete knowledge graph (nodes + edges) for a project."""
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            mem_res = supabase_client.table("project_members").select("role").eq("project_id", project_id).eq("user_id", user_id).execute()
+            if not mem_res.data:
+                return {"nodes": [], "edges": []}
+            
+            nodes_res = supabase_client.table("knowledge_nodes").select("*").eq("project_id", project_id).execute()
+            edges_res = supabase_client.table("knowledge_edges").select("*, papers(title)").eq("project_id", project_id).execute()
+            
+            nodes = []
+            for n in nodes_res.data:
+                p_ids = json.loads(n.get("source_paper_ids") or "[]") if isinstance(n.get("source_paper_ids"), str) else (n.get("source_paper_ids") or [])
+                nodes.append({
+                    "id": n["id"],
+                    "name": n["name"],
+                    "category": n["category"],
+                    "description": n.get("description") or "",
+                    "source_paper_ids": p_ids,
+                    "created_at": n.get("created_at")
+                })
+                
+            edges = []
+            for e in edges_res.data:
+                paper_info = e.get("papers") or {}
+                edges.append({
+                    "id": e["id"],
+                    "source_node_id": e["source_node_id"],
+                    "target_node_id": e["target_node_id"],
+                    "relation_type": e["relation_type"],
+                    "evidence": e.get("evidence") or "",
+                    "source_paper_id": e.get("source_paper_id"),
+                    "source_paper_title": paper_info.get("title") or "Saved Literature",
+                    "created_at": e.get("created_at")
+                })
+                
+            return {"nodes": nodes, "edges": edges}
+        except Exception as e:
+            print(f"Error getting knowledge graph: {e}")
+            return {"nodes": [], "edges": []}
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?", (project_id, user_id))
+        if not c.fetchone():
+            conn.close()
+            return {"nodes": [], "edges": []}
+            
+        c.execute("SELECT id, name, category, description, source_paper_ids, created_at FROM knowledge_nodes WHERE project_id = ? ORDER BY name ASC", (project_id,))
+        nodes_rows = c.fetchall()
+        
+        nodes = []
+        for r in nodes_rows:
+            try:
+                p_ids = json.loads(r[4]) if r[4] else []
+            except Exception:
+                p_ids = []
+            nodes.append({
+                "id": r[0],
+                "name": r[1],
+                "category": r[2],
+                "description": r[3] or "",
+                "source_paper_ids": p_ids,
+                "created_at": r[5]
+            })
+            
+        c.execute("""
+            SELECT e.id, e.source_node_id, e.target_node_id, e.relation_type, e.evidence, e.source_paper_id, e.created_at, p.title
+            FROM knowledge_edges e
+            LEFT JOIN papers p ON e.source_paper_id = p.id
+            WHERE e.project_id = ?
+        """, (project_id,))
+        edges_rows = c.fetchall()
+        
+        edges = []
+        for r in edges_rows:
+            edges.append({
+                "id": r[0],
+                "source_node_id": r[1],
+                "target_node_id": r[2],
+                "relation_type": r[3],
+                "evidence": r[4] or "",
+                "source_paper_id": r[5],
+                "source_paper_title": r[7] or "Saved Literature",
+                "created_at": r[6]
+            })
+        conn.close()
+        return {"nodes": nodes, "edges": edges}
+
+def delete_knowledge_node(project_id, node_id, user_id):
+    """Delete a knowledge node and its connected edges."""
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            supabase_client.table("knowledge_nodes").delete().eq("id", node_id).eq("project_id", project_id).execute()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        c = conn.cursor()
+        try:
+            c.execute("DELETE FROM knowledge_nodes WHERE id = ? AND project_id = ?", (node_id, project_id))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
+def clear_project_knowledge_graph(project_id, user_id):
+    """Reset the knowledge graph for a project."""
+    if IS_SUPABASE_CONFIGURED and supabase_client:
+        try:
+            supabase_client.table("knowledge_nodes").delete().eq("project_id", project_id).execute()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    else:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        c = conn.cursor()
+        try:
+            c.execute("DELETE FROM knowledge_nodes WHERE project_id = ?", (project_id,))
+            conn.commit()
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            conn.close()
+
 
 

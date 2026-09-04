@@ -57,6 +57,11 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
       AI Assistant (RAG)
     </a>
+    <a href="{{ url_for('project_view', project_id=project.id, tab='knowledge') }}" 
+       class="tab-btn {{ 'active' if active_tab == 'knowledge' else '' }}" id="tab-btn-knowledge">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="6" cy="18" r="3"/><line x1="9" y1="6" x2="15" y2="6"/><line x1="18" y1="9" x2="18" y2="15"/><line x1="9" y1="18" x2="15" y2="18"/><line x1="6" y1="9" x2="6" y2="15"/><line x1="8.5" y1="8.5" x2="15.5" y2="15.5"/></svg>
+      Knowledge Graph ({{ knowledge_graph.nodes | length if knowledge_graph else 0 }})
+    </a>
     <a href="{{ url_for('project_view', project_id=project.id, tab='git') }}" 
        class="tab-btn {{ 'active' if active_tab == 'git' else '' }}" id="tab-btn-git">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
@@ -590,6 +595,665 @@
       </form>
     </div>
   </div>
+
+{% elif active_tab == 'knowledge' %}
+  <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+    <!-- Knowledge Header & Actions -->
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+          <h2 style="font-size: 1.25rem; font-weight: 700;">Knowledge & Concept Graph</h2>
+          <span class="badge badge-owner">{{ knowledge_graph.nodes | length }} Concepts</span>
+          <span class="badge badge-live">{{ knowledge_graph.edges | length }} Relations</span>
+        </div>
+        <p style="color: var(--text-secondary); font-size: 0.85rem;">
+          Ontological network extracted across saved literature. Inspect methods, datasets, tasks, metrics, and empirical relation receipts.
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button class="btn btn-primary btn-sm" onclick="openModal('modal-extract-knowledge')" id="btn-extract-knowledge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          Extract from Literature
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="openModal('modal-new-concept')" id="btn-add-concept">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Add Concept
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="openModal('modal-new-relation')" id="btn-add-relation">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          Add Relation
+        </button>
+        {% if knowledge_graph.nodes %}
+          <form method="POST" action="{{ url_for('clear_knowledge_graph_route', project_id=project.id) }}" onsubmit="return confirm('Clear entire Knowledge Graph for this project?');" style="display: inline;">
+            <button type="submit" class="btn btn-danger btn-sm" id="btn-clear-kg">Clear Graph</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- View Mode Switcher -->
+    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
+      <div style="display: flex; gap: 0.5rem;">
+        <button class="btn btn-sm btn-secondary active" id="btn-view-graph" onclick="switchKgView('graph')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="6" cy="18" r="3"/><line x1="9" y1="6" x2="15" y2="6"/><line x1="18" y1="9" x2="18" y2="15"/><line x1="9" y1="18" x2="15" y2="18"/><line x1="6" y1="9" x2="6" y2="15"/></svg>
+          Interactive Graph
+        </button>
+        <button class="btn btn-sm btn-secondary" id="btn-view-matrix" onclick="switchKgView('matrix')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+          Concept Matrix Table ({{ knowledge_graph.nodes | length }})
+        </button>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <input type="text" id="kg-search-input" class="form-control" placeholder="Search concepts..." style="padding: 0.3rem 0.75rem; font-size: 0.8rem; width: 220px;" oninput="filterKgNodes(this.value)">
+      </div>
+    </div>
+
+    {% if not knowledge_graph.nodes %}
+      <div class="empty-state">
+        <div class="empty-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="6" cy="18" r="3"/><line x1="9" y1="6" x2="15" y2="6"/><line x1="18" y1="9" x2="18" y2="15"/><line x1="9" y1="18" x2="15" y2="18"/><line x1="6" y1="9" x2="6" y2="15"/></svg>
+        </div>
+        <h3 class="empty-title">Knowledge Graph is Empty</h3>
+        <p class="empty-desc">
+          Extract concepts and relationships directly from your saved papers, or create nodes manually to map your research domain.
+        </p>
+        <button class="btn btn-primary" onclick="openModal('modal-extract-knowledge')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          Extract Concepts from Saved Papers
+        </button>
+      </div>
+    {% else %}
+      <!-- Graph Canvas View -->
+      <div id="kg-view-graph" class="kg-container">
+        <!-- Interactive Canvas Card -->
+        <div class="kg-canvas-card">
+          <div class="kg-canvas-header">
+            <div class="kg-filters">
+              <button class="kg-filter-btn active" onclick="setCategoryFilter('all', this)">All ({{ knowledge_graph.nodes | length }})</button>
+              <button class="kg-filter-btn" onclick="setCategoryFilter('method', this)">Methods</button>
+              <button class="kg-filter-btn" onclick="setCategoryFilter('dataset', this)">Datasets</button>
+              <button class="kg-filter-btn" onclick="setCategoryFilter('task', this)">Tasks</button>
+              <button class="kg-filter-btn" onclick="setCategoryFilter('metric', this)">Metrics</button>
+              <button class="kg-filter-btn" onclick="setCategoryFilter('concept', this)">Concepts</button>
+            </div>
+            <span style="font-size: 0.72rem; color: var(--text-muted);">Drag to pan/move &bull; Click node to inspect evidence</span>
+          </div>
+
+          <div class="kg-canvas-wrapper" id="kg-canvas-wrapper">
+            <canvas id="kg-canvas"></canvas>
+
+            <!-- Floating Controls -->
+            <div class="kg-floating-controls">
+              <button class="kg-control-btn" title="Zoom In" onclick="zoomKg(1.2)">+</button>
+              <button class="kg-control-btn" title="Zoom Out" onclick="zoomKg(0.8)">&minus;</button>
+              <button class="kg-control-btn" title="Reset View" onclick="resetKgView()">&#8635;</button>
+            </div>
+
+            <!-- Color Legend -->
+            <div class="kg-legend-bar">
+              <div class="kg-legend-item"><span class="kg-dot kg-dot-method"></span> Method</div>
+              <div class="kg-legend-item"><span class="kg-dot kg-dot-dataset"></span> Dataset</div>
+              <div class="kg-legend-item"><span class="kg-dot kg-dot-task"></span> Task</div>
+              <div class="kg-legend-item"><span class="kg-dot kg-dot-metric"></span> Metric</div>
+              <div class="kg-legend-item"><span class="kg-dot kg-dot-concept"></span> Concept</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Concept & Evidence Inspector Drawer -->
+        <div class="kg-inspector-card" id="kg-inspector">
+          <div id="kg-inspector-empty" style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 0.75rem; opacity: 0.6;"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            <p style="font-size: 0.85rem;">Click any concept node on the graph or table to view its definition, connected relationships, and empirical evidence receipts.</p>
+          </div>
+
+          <div id="kg-inspector-details" style="display: none;">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <span id="inspect-category-badge" class="kg-node-badge kg-badge-method">Method</span>
+              <form id="inspect-delete-form" method="POST" action="" onsubmit="return confirm('Delete this concept from the Knowledge Graph?');">
+                <button type="submit" class="btn btn-danger btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.72rem;">Delete</button>
+              </form>
+            </div>
+
+            <h3 id="inspect-node-name" style="font-size: 1.2rem; font-weight: 700; margin-bottom: 0.4rem; color: var(--text-primary);">Concept Name</h3>
+            <p id="inspect-node-desc" style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 1rem;">Description</p>
+
+            <div style="border-top: 1px solid var(--border-subtle); padding-top: 0.85rem; margin-bottom: 0.85rem;">
+              <h4 style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.5rem;">Connected Relationships (<span id="inspect-edges-count">0</span>)</h4>
+              <div id="inspect-edges-list" style="display: flex; flex-direction: column; gap: 0.6rem;"></div>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-subtle); padding-top: 0.85rem;">
+              <h4 style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.5rem;">Source Literature</h4>
+              <div id="inspect-papers-list" style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.8rem; color: var(--text-secondary);"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Matrix Table View (Hidden by default) -->
+      <div id="kg-view-matrix" style="display: none;">
+        <div class="card" style="padding: 0; overflow: hidden;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+            <thead>
+              <tr style="background: var(--bg-surface-elevated); border-bottom: 1px solid var(--border-subtle); text-align: left;">
+                <th style="padding: 0.85rem 1.25rem;">Concept / Entity</th>
+                <th style="padding: 0.85rem 1rem;">Category</th>
+                <th style="padding: 0.85rem 1rem;">Description</th>
+                <th style="padding: 0.85rem 1rem;">Relationships</th>
+                <th style="padding: 0.85rem 1.25rem; text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for node in knowledge_graph.nodes %}
+                <tr class="kg-matrix-row" data-name="{{ node.name | lower }}" data-category="{{ node.category }}" style="border-bottom: 1px solid var(--border-subtle);">
+                  <td style="padding: 0.85rem 1.25rem; font-weight: 600;">
+                    <a href="javascript:void(0)" onclick="selectNodeById('{{ node.id }}')" style="color: var(--text-primary); text-decoration: none;">
+                      {{ node.name }}
+                    </a>
+                  </td>
+                  <td style="padding: 0.85rem 1rem;">
+                    <span class="kg-node-badge kg-badge-{{ node.category }}">{{ node.category }}</span>
+                  </td>
+                  <td style="padding: 0.85rem 1rem; color: var(--text-secondary); max-width: 380px;">
+                    {{ node.description or '—' }}
+                  </td>
+                  <td style="padding: 0.85rem 1rem; color: var(--text-muted); font-size: 0.8rem;">
+                    {% set node_edges = [] %}
+                    {% for edge in knowledge_graph.edges %}
+                      {% if edge.source_node_id == node.id or edge.target_node_id == node.id %}
+                        {% set _ = node_edges.append(edge) %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ node_edges | length }} links
+                  </td>
+                  <td style="padding: 0.85rem 1.25rem; text-align: right;">
+                    <div style="display: inline-flex; gap: 0.4rem;">
+                      <button class="btn btn-secondary btn-sm" onclick="selectNodeById('{{ node.id }}')">Inspect</button>
+                      <form method="POST" action="{{ url_for('delete_knowledge_node_route', project_id=project.id, node_id=node.id) }}" onsubmit="return confirm('Delete concept?');" style="display: inline;">
+                        <button type="submit" class="btn btn-danger btn-sm" style="padding: 0.25rem 0.5rem;">&times;</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Modal: Extract Knowledge from Literature -->
+  <div id="modal-extract-knowledge" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Extract Knowledge & Concepts</h3>
+        <button class="btn-close" onclick="closeModal('modal-extract-knowledge')">&times;</button>
+      </div>
+      <form method="POST" action="{{ url_for('extract_knowledge', project_id=project.id) }}" onsubmit="document.getElementById('kg-extract-submit-btn').innerHTML='Extracting...'; document.getElementById('kg-extract-submit-btn').disabled=true;">
+        <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
+          The Knowledge Agent reads through your project's saved literature, detects key methods, datasets, tasks, and metrics, and structures verifiable relationship links with quote receipts.
+        </p>
+        <div class="form-group">
+          <label for="extract-target-paper">Target Literature</label>
+          <select id="extract-target-paper" name="paper_id" class="form-control">
+            <option value="">All Saved Papers in Project Library ({{ saved_papers | length }})</option>
+            {% for p in saved_papers %}
+              <option value="{{ p.id }}">{{ p.title[:80] }} ({{ p.year or 'N/A' }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-extract-knowledge')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="kg-extract-submit-btn">Run Extraction Agent</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Add Concept Node Manual -->
+  <div id="modal-new-concept" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Add Concept Node</h3>
+        <button class="btn-close" onclick="closeModal('modal-new-concept')">&times;</button>
+      </div>
+      <form method="POST" action="{{ url_for('add_knowledge_node_manual', project_id=project.id) }}">
+        <div class="form-group">
+          <label for="concept-name">Concept Name *</label>
+          <input type="text" id="concept-name" name="name" class="form-control" placeholder="e.g. FlashAttention, ImageNet, BLEU Score" required>
+        </div>
+        <div class="form-group">
+          <label for="concept-category">Category *</label>
+          <select id="concept-category" name="category" class="form-control" required>
+            <option value="method">Method (Algorithm, Architecture, Model)</option>
+            <option value="dataset">Dataset (Benchmark, Corpus)</option>
+            <option value="task">Task (Downstream Problem)</option>
+            <option value="metric">Metric (Quantitative Evaluation)</option>
+            <option value="concept">Concept (Theoretical Principle)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="concept-desc">Description</label>
+          <textarea id="concept-desc" name="description" class="form-control" placeholder="Brief technical definition or role..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="concept-paper">Source Paper</label>
+          <select id="concept-paper" name="source_paper_id" class="form-control">
+            <option value="">None / External Knowledge</option>
+            {% for p in saved_papers %}
+              <option value="{{ p.id }}">{{ p.title[:80] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-concept')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Concept</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Add Relation Edge Manual -->
+  <div id="modal-new-relation" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Add Relationship Link</h3>
+        <button class="btn-close" onclick="closeModal('modal-new-relation')">&times;</button>
+      </div>
+      <form method="POST" action="{{ url_for('add_knowledge_edge_manual', project_id=project.id) }}">
+        <div class="form-group">
+          <label for="rel-source">Source Concept *</label>
+          <select id="rel-source" name="source_node_id" class="form-control" required>
+            <option value="">Select source concept...</option>
+            {% for n in knowledge_graph.nodes %}
+              <option value="{{ n.id }}">{{ n.name }} ({{ n.category }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="rel-target">Target Concept *</label>
+          <select id="rel-target" name="target_node_id" class="form-control" required>
+            <option value="">Select target concept...</option>
+            {% for n in knowledge_graph.nodes %}
+              <option value="{{ n.id }}">{{ n.name }} ({{ n.category }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="rel-type">Relationship Type *</label>
+          <select id="rel-type" name="relation_type" class="form-control" required>
+            <option value="uses">uses (Source uses Target)</option>
+            <option value="evaluates_on">evaluates_on (Source evaluated on Target dataset/benchmark)</option>
+            <option value="improves">improves (Source extends/enhances Target)</option>
+            <option value="outperforms">outperforms (Source achieves higher results than Target)</option>
+            <option value="contradicts">contradicts (Source findings conflict with Target)</option>
+            <option value="applies_to">applies_to (Source applied to Target task)</option>
+            <option value="measures_with">measures_with (Source measured using Target metric)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="rel-evidence">Evidence Passage Receipt</label>
+          <textarea id="rel-evidence" name="evidence" class="form-control" placeholder="Direct citation excerpt from paper proving this link..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="rel-paper">Source Paper</label>
+          <select id="rel-paper" name="source_paper_id" class="form-control">
+            <option value="">None / External Reference</option>
+            {% for p in saved_papers %}
+              <option value="{{ p.id }}">{{ p.title[:80] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-relation')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Relationship</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Knowledge Graph Interactive Canvas Engine
+    const rawNodes = {{ knowledge_graph.nodes | tojson if knowledge_graph else '[]' }};
+    const rawEdges = {{ knowledge_graph.edges | tojson if knowledge_graph else '[]' }};
+    const projectId = "{{ project.id }}";
+
+    let activeCategoryFilter = 'all';
+    let currentSearchTerm = '';
+    let selectedNodeId = null;
+
+    const categoryColors = {
+      'method': '#10B981',
+      'dataset': '#8B5CF6',
+      'task': '#F59E0B',
+      'metric': '#06B6D4',
+      'concept': '#EC4899'
+    };
+
+    let canvas, ctx;
+    let width = 800, height = 520;
+    let zoom = 1, panX = 0, panY = 0;
+    let isDraggingCanvas = false;
+    let draggedNode = null;
+    let dragStartX = 0, dragStartY = 0;
+
+    let nodes = [];
+    let edges = [];
+
+    function initKgGraph() {
+      const wrapper = document.getElementById('kg-canvas-wrapper');
+      canvas = document.getElementById('kg-canvas');
+      if (!canvas || !wrapper) return;
+
+      ctx = canvas.getContext('2d');
+      resizeKgCanvas();
+      window.addEventListener('resize', resizeKgCanvas);
+
+      // Initialize Simulation Nodes
+      nodes = rawNodes.map((n, i) => {
+        const angle = (i / (rawNodes.length || 1)) * 2 * Math.PI;
+        const radius = Math.min(width, height) * 0.35;
+        return {
+          ...n,
+          x: width / 2 + Math.cos(angle) * radius + (Math.random() - 0.5) * 40,
+          y: height / 2 + Math.sin(angle) * radius + (Math.random() - 0.5) * 40,
+          vx: 0,
+          vy: 0,
+          radius: n.category === 'method' ? 22 : (n.category === 'dataset' ? 20 : 18)
+        };
+      });
+
+      edges = rawEdges.map(e => ({
+        ...e,
+        source: nodes.find(n => n.id === e.source_node_id),
+        target: nodes.find(n => n.id === e.target_node_id)
+      })).filter(e => e.source && e.target);
+
+      setupCanvasInteractions();
+      requestAnimationFrame(renderKgLoop);
+    }
+
+    function resizeKgCanvas() {
+      const wrapper = document.getElementById('kg-canvas-wrapper');
+      if (!wrapper || !canvas) return;
+      width = wrapper.clientWidth || 800;
+      height = wrapper.clientHeight || 520;
+      canvas.width = width * window.devicePixelRatio;
+      canvas.height = height * window.devicePixelRatio;
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+
+    function setupCanvasInteractions() {
+      canvas.addEventListener('mousedown', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left - panX) / zoom;
+        const mouseY = (e.clientY - rect.top - panY) / zoom;
+
+        // Check if node clicked
+        const clicked = nodes.find(n => {
+          if (activeCategoryFilter !== 'all' && n.category !== activeCategoryFilter) return false;
+          const dx = n.x - mouseX;
+          const dy = n.y - mouseY;
+          return Math.sqrt(dx * dx + dy * dy) <= n.radius + 4;
+        });
+
+        if (clicked) {
+          draggedNode = clicked;
+          selectNode(clicked);
+        } else {
+          isDraggingCanvas = true;
+          dragStartX = e.clientX - panX;
+          dragStartY = e.clientY - panY;
+        }
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        if (draggedNode) {
+          draggedNode.x = (e.clientX - rect.left - panX) / zoom;
+          draggedNode.y = (e.clientY - rect.top - panY) / zoom;
+        } else if (isDraggingCanvas) {
+          panX = e.clientX - dragStartX;
+          panY = e.clientY - dragStartY;
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        draggedNode = null;
+        isDraggingCanvas = false;
+      });
+
+      canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.1 : 0.9;
+        zoom = Math.max(0.3, Math.min(3.0, zoom * factor));
+      });
+    }
+
+    function renderKgLoop() {
+      if (!canvas || !ctx) return;
+
+      // Force Layout Physics Step
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const n1 = nodes[i];
+          const n2 = nodes[j];
+          let dx = n2.x - n1.x;
+          let dy = n2.y - n1.y;
+          let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          if (dist < 180) {
+            let force = (180 - dist) / dist * 0.05;
+            if (n1 !== draggedNode) { n1.x -= dx * force; n1.y -= dy * force; }
+            if (n2 !== draggedNode) { n2.x += dx * force; n2.y += dy * force; }
+          }
+        }
+      }
+
+      // Edge Spring Pull
+      edges.forEach(e => {
+        let dx = e.target.x - e.source.x;
+        let dy = e.target.y - e.source.y;
+        let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        let force = (dist - 140) * 0.008;
+        if (e.source !== draggedNode) { e.source.x += dx * force; e.source.y += dy * force; }
+        if (e.target !== draggedNode) { e.target.x -= dx * force; e.target.y -= dy * force; }
+      });
+
+      // Clear & Draw
+      ctx.clearRect(0, 0, width, height);
+      ctx.save();
+      ctx.translate(panX, panY);
+      ctx.scale(zoom, zoom);
+
+      // Draw Edges
+      edges.forEach(e => {
+        const isSrcVisible = activeCategoryFilter === 'all' || e.source.category === activeCategoryFilter;
+        const isTgtVisible = activeCategoryFilter === 'all' || e.target.category === activeCategoryFilter;
+        if (!isSrcVisible || !isTgtVisible) return;
+
+        const isHighlighted = selectedNodeId && (e.source.id === selectedNodeId || e.target.id === selectedNodeId);
+
+        ctx.beginPath();
+        ctx.moveTo(e.source.x, e.source.y);
+        ctx.lineTo(e.target.x, e.target.y);
+        ctx.strokeStyle = isHighlighted ? '#6366F1' : 'rgba(75, 85, 99, 0.45)';
+        ctx.lineWidth = isHighlighted ? 2.5 : 1.2;
+        ctx.stroke();
+
+        // Edge label & Arrow
+        const midX = (e.source.x + e.target.x) / 2;
+        const midY = (e.source.y + e.target.y) / 2;
+        ctx.font = '9px Inter, sans-serif';
+        ctx.fillStyle = isHighlighted ? '#A5B4FC' : 'rgba(156, 163, 175, 0.6)';
+        ctx.textAlign = 'center';
+        ctx.fillText(e.relation_type, midX, midY - 3);
+      });
+
+      // Draw Nodes
+      nodes.forEach(n => {
+        const isVisible = activeCategoryFilter === 'all' || n.category === activeCategoryFilter;
+        if (!isVisible) return;
+
+        const isSelected = selectedNodeId === n.id;
+        const isSearched = currentSearchTerm && n.name.toLowerCase().includes(currentSearchTerm);
+        const color = categoryColors[n.category] || '#9CA3AF';
+
+        // Glow ring if selected
+        if (isSelected || isSearched) {
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.radius + 6, 0, 2 * Math.PI);
+          ctx.fillStyle = 'rgba(99, 102, 241, 0.35)';
+          ctx.fill();
+        }
+
+        // Node circle
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.radius, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = isSelected ? 3 : 1.5;
+        ctx.strokeStyle = isSelected ? '#FFFFFF' : 'rgba(255, 255, 255, 0.2)';
+        ctx.stroke();
+
+        // Node Label
+        ctx.font = '11px Inter, sans-serif';
+        ctx.fillStyle = '#F9FAFB';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.name, n.x, n.y + n.radius + 14);
+      });
+
+      ctx.restore();
+      requestAnimationFrame(renderKgLoop);
+    }
+
+    function zoomKg(factor) {
+      zoom = Math.max(0.3, Math.min(3.0, zoom * factor));
+    }
+
+    function resetKgView() {
+      zoom = 1;
+      panX = 0;
+      panY = 0;
+    }
+
+    function setCategoryFilter(category, btn) {
+      activeCategoryFilter = category;
+      document.querySelectorAll('.kg-filter-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+    }
+
+    function filterKgNodes(term) {
+      currentSearchTerm = term.trim().toLowerCase();
+      // Also filter table
+      document.querySelectorAll('.kg-matrix-row').forEach(row => {
+        const name = row.getAttribute('data-name');
+        row.style.display = (!currentSearchTerm || name.includes(currentSearchTerm)) ? '' : 'none';
+      });
+    }
+
+    function selectNode(node) {
+      if (!node) return;
+      selectedNodeId = node.id;
+
+      document.getElementById('kg-inspector-empty').style.display = 'none';
+      const details = document.getElementById('kg-inspector-details');
+      details.style.display = 'block';
+
+      document.getElementById('inspect-node-name').innerText = node.name;
+      document.getElementById('inspect-node-desc').innerText = node.description || 'No detailed description recorded.';
+      
+      const badge = document.getElementById('inspect-category-badge');
+      badge.className = `kg-node-badge kg-badge-${node.category}`;
+      badge.innerText = node.category;
+
+      document.getElementById('inspect-delete-form').action = `/projects/${projectId}/knowledge/nodes/${node.id}/delete`;
+
+      // Connected relationships
+      const connected = edges.filter(e => e.source_node_id === node.id || e.target_node_id === node.id);
+      document.getElementById('inspect-edges-count').innerText = connected.length;
+      
+      const edgesList = document.getElementById('inspect-edges-list');
+      edgesList.innerHTML = '';
+      if (connected.length === 0) {
+        edgesList.innerHTML = '<span style="font-size: 0.8rem; color: var(--text-muted);">No connected relations.</span>';
+      } else {
+        connected.forEach(e => {
+          const isOut = e.source_node_id === node.id;
+          const otherNode = isOut ? e.target : e.source;
+          const div = document.createElement('div');
+          div.className = 'kg-evidence-item';
+          div.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.25rem;">
+              <span>${isOut ? `&rarr; ${e.relation_type}` : `&larr; ${e.relation_type}`} <strong>${otherNode.name}</strong></span>
+              <span class="kg-node-badge kg-badge-${otherNode.category}" style="font-size: 0.65rem;">${otherNode.category}</span>
+            </div>
+            ${e.evidence ? `<p style="font-size: 0.75rem; color: var(--text-secondary); font-style: italic; margin-top: 0.3rem;">"${e.evidence}"</p>` : ''}
+            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.35rem;">Source: ${e.source_paper_title || 'Literature'}</div>
+          `;
+          edgesList.appendChild(div);
+        });
+      }
+
+      // Source papers
+      const papersList = document.getElementById('inspect-papers-list');
+      papersList.innerHTML = '';
+      const pIds = node.source_paper_ids || [];
+      if (pIds.length === 0) {
+        papersList.innerHTML = '<span>External / User Input</span>';
+      } else {
+        pIds.forEach(pid => {
+          const link = document.createElement('a');
+          link.href = `/projects/${projectId}/literature/${pid}/reader`;
+          link.style.color = 'var(--accent-cyan)';
+          link.style.textDecoration = 'none';
+          link.innerText = `View Cited Paper in Reader &rarr;`;
+          papersList.appendChild(link);
+        });
+      }
+    }
+
+    function selectNodeById(nodeId) {
+      const node = rawNodes.find(n => n.id === nodeId);
+      if (node) {
+        switchKgView('graph');
+        selectNode(node);
+      }
+    }
+
+    function switchKgView(view) {
+      const graphView = document.getElementById('kg-view-graph');
+      const matrixView = document.getElementById('kg-view-matrix');
+      const btnGraph = document.getElementById('btn-view-graph');
+      const btnMatrix = document.getElementById('btn-view-matrix');
+
+      if (view === 'graph') {
+        if (graphView) graphView.style.display = 'grid';
+        if (matrixView) matrixView.style.display = 'none';
+        if (btnGraph) btnGraph.classList.add('active');
+        if (btnMatrix) btnMatrix.classList.remove('active');
+        if (!canvas) initKgGraph();
+      } else {
+        if (graphView) graphView.style.display = 'none';
+        if (matrixView) matrixView.style.display = 'block';
+        if (btnGraph) btnGraph.classList.remove('active');
+        if (btnMatrix) btnMatrix.classList.add('active');
+      }
+    }
+
+    // Auto-init on page load if knowledge tab active
+    document.addEventListener('DOMContentLoaded', () => {
+      {% if active_tab == 'knowledge' and knowledge_graph.nodes %}
+        initKgGraph();
+      {% endif %}
+    });
+  </script>
 
 {% elif active_tab == 'git' %}
   <div style="display: flex; flex-direction: column; gap: 1.5rem;">

@@ -163,6 +163,7 @@ import research.papers as papers_mgmt
 from flask import send_file
 
 import ai.research_agent as research_agent
+import ai.knowledge_agent as knowledge_agent
 import research.rag as rag
 import research.git_tracker as git_tracker
 
@@ -183,8 +184,9 @@ def project_view(project_id):
     search_error = None
     notes = []
     index_status = {"indexed": False, "total_chunks": 0}
+    knowledge_graph = {"nodes": [], "edges": []}
     
-    if active_tab in ("literature", "ai"):
+    if active_tab in ("literature", "ai", "knowledge"):
         saved_papers = papers_mgmt.get_project_papers(project_id, user["id"])
         
     if active_tab == "literature" and search_query:
@@ -196,6 +198,9 @@ def project_view(project_id):
             
     if active_tab == "notes":
         notes = db.get_project_notes(project_id, user["id"])
+
+    if active_tab == "knowledge":
+        knowledge_graph = db.get_project_knowledge_graph(project_id, user["id"])
             
     if active_tab == "ai":
         index_path, meta_path = rag.get_project_index_paths(project_id)
@@ -240,6 +245,7 @@ def project_view(project_id):
         search_error=search_error,
         index_status=index_status,
         notes=notes,
+        knowledge_graph=knowledge_graph,
         commits=commits,
         file_tree=file_tree,
         selected_file_path=selected_file_path,
@@ -528,6 +534,103 @@ def invite_member(project_id):
         flash(res["error"], "error")
         
     return redirect(url_for("project_view", project_id=project_id, tab="team"))
+
+# ==============================================================================
+# Knowledge Graph Endpoints
+# ==============================================================================
+
+@app.route("/projects/<project_id>/knowledge/extract", methods=["POST"])
+@login_required
+def extract_knowledge(project_id):
+    user = session["user"]
+    proj = db.get_project_details(project_id, user["id"])
+    if not proj:
+        return jsonify({"success": False, "error": "Access denied."}), 403
+        
+    paper_id = request.form.get("paper_id") or (request.get_json(silent=True) or {}).get("paper_id")
+    if paper_id:
+        paper_id = paper_id.strip() or None
+
+    res = knowledge_agent.extract_project_knowledge_graph(project_id, user["id"], paper_id=paper_id)
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(res)
+        
+    if res.get("success"):
+        flash(f"Extracted {res.get('new_nodes_added', 0)} concepts and {res.get('new_edges_added', 0)} relationships into the Knowledge Graph.", "success")
+    else:
+        flash(f"Extraction notice: {res.get('error')}", "error")
+        
+    return redirect(url_for("project_view", project_id=project_id, tab="knowledge"))
+
+@app.route("/projects/<project_id>/knowledge/graph", methods=["GET"])
+@login_required
+def get_knowledge_graph_api(project_id):
+    user = session["user"]
+    graph = db.get_project_knowledge_graph(project_id, user["id"])
+    return jsonify({"success": True, "graph": graph})
+
+@app.route("/projects/<project_id>/knowledge/nodes/new", methods=["POST"])
+@login_required
+def add_knowledge_node_manual(project_id):
+    user = session["user"]
+    name = request.form.get("name", "").strip()
+    category = request.form.get("category", "concept").strip()
+    description = request.form.get("description", "").strip()
+    source_paper_id = request.form.get("source_paper_id", "").strip() or None
+    
+    if not name:
+        flash("Concept name cannot be empty.", "error")
+        return redirect(url_for("project_view", project_id=project_id, tab="knowledge"))
+        
+    res = db.add_or_update_knowledge_node(project_id, name, category, description, source_paper_id)
+    if res["success"]:
+        flash(f"Concept '{name}' added to Knowledge Graph.", "success")
+    else:
+        flash(f"Could not add concept: {res.get('error')}", "error")
+    return redirect(url_for("project_view", project_id=project_id, tab="knowledge"))
+
+@app.route("/projects/<project_id>/knowledge/nodes/<node_id>/delete", methods=["POST"])
+@login_required
+def delete_knowledge_node_route(project_id, node_id):
+    user = session["user"]
+    res = db.delete_knowledge_node(project_id, node_id, user["id"])
+    if res["success"]:
+        flash("Concept node deleted from graph.", "info")
+    else:
+        flash(f"Could not delete node: {res.get('error')}", "error")
+    return redirect(url_for("project_view", project_id=project_id, tab="knowledge"))
+
+@app.route("/projects/<project_id>/knowledge/edges/new", methods=["POST"])
+@login_required
+def add_knowledge_edge_manual(project_id):
+    user = session["user"]
+    source_id = request.form.get("source_node_id", "").strip()
+    target_id = request.form.get("target_node_id", "").strip()
+    relation_type = request.form.get("relation_type", "relates_to").strip()
+    evidence = request.form.get("evidence", "").strip()
+    source_paper_id = request.form.get("source_paper_id", "").strip() or None
+    
+    if not source_id or not target_id:
+        flash("Source and target concepts must be selected.", "error")
+        return redirect(url_for("project_view", project_id=project_id, tab="knowledge"))
+        
+    res = db.add_knowledge_edge(project_id, source_id, target_id, relation_type, evidence, source_paper_id)
+    if res["success"]:
+        flash("Relationship link added to graph.", "success")
+    else:
+        flash(f"Could not add relationship: {res.get('error')}", "error")
+    return redirect(url_for("project_view", project_id=project_id, tab="knowledge"))
+
+@app.route("/projects/<project_id>/knowledge/clear", methods=["POST"])
+@login_required
+def clear_knowledge_graph_route(project_id):
+    user = session["user"]
+    res = db.clear_project_knowledge_graph(project_id, user["id"])
+    if res["success"]:
+        flash("Knowledge Graph reset.", "info")
+    else:
+        flash(f"Could not reset graph: {res.get('error')}", "error")
+    return redirect(url_for("project_view", project_id=project_id, tab="knowledge"))
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5001))

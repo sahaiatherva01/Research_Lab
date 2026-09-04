@@ -77,6 +77,32 @@ CREATE TABLE IF NOT EXISTS public.paper_annotations (
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 7. Knowledge Nodes Table (Entities, Methods, Datasets, Concepts)
+CREATE TABLE IF NOT EXISTS public.knowledge_nodes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('method', 'dataset', 'task', 'metric', 'concept')),
+    description TEXT,
+    source_paper_ids JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(project_id, name)
+);
+
+-- 8. Knowledge Edges Table (Relational Connections)
+CREATE TABLE IF NOT EXISTS public.knowledge_edges (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    source_node_id UUID NOT NULL REFERENCES public.knowledge_nodes(id) ON DELETE CASCADE,
+    target_node_id UUID NOT NULL REFERENCES public.knowledge_nodes(id) ON DELETE CASCADE,
+    relation_type TEXT NOT NULL,
+    evidence TEXT,
+    source_paper_id UUID REFERENCES public.papers(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(project_id, source_node_id, target_node_id, relation_type)
+);
+
+
 
 -- ==============================================================================
 -- Automatic Triggers
@@ -247,3 +273,40 @@ CREATE POLICY "Owners and Researchers can delete paper annotations"
     ON public.paper_annotations FOR DELETE
     TO authenticated
     USING (public.get_project_role(project_id, auth.uid()) IN ('owner', 'researcher'));
+
+-- Knowledge Nodes Policies
+ALTER TABLE public.knowledge_nodes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Project members can view knowledge nodes"
+    ON public.knowledge_nodes FOR SELECT
+    TO authenticated
+    USING (public.is_project_member(project_id, auth.uid()));
+
+CREATE POLICY "Owners and Researchers can insert knowledge nodes"
+    ON public.knowledge_nodes FOR INSERT
+    TO authenticated
+    WITH CHECK (public.get_project_role(project_id, auth.uid()) IN ('owner', 'researcher'));
+
+CREATE POLICY "Owners and Researchers can delete knowledge nodes"
+    ON public.knowledge_nodes FOR DELETE
+    TO authenticated
+    USING (public.get_project_role(project_id, auth.uid()) IN ('owner', 'researcher'));
+
+-- Knowledge Edges Policies
+ALTER TABLE public.knowledge_edges ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Project members can view knowledge edges"
+    ON public.knowledge_edges FOR SELECT
+    TO authenticated
+    USING (public.is_project_member(project_id, auth.uid()));
+
+CREATE POLICY "Owners and Researchers can insert knowledge edges"
+    ON public.knowledge_edges FOR INSERT
+    TO authenticated
+    WITH CHECK (public.get_project_role(project_id, auth.uid()) IN ('owner', 'researcher'));
+
+CREATE POLICY "Owners and Researchers can delete knowledge edges"
+    ON public.knowledge_edges FOR DELETE
+    TO authenticated
+    USING (public.get_project_role(project_id, auth.uid()) IN ('owner', 'researcher'));
+
