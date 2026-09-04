@@ -162,6 +162,9 @@ import research.search as academic_search
 import research.papers as papers_mgmt
 from flask import send_file
 
+import ai.research_agent as research_agent
+import research.rag as rag
+
 @app.route("/projects/<project_id>")
 @login_required
 def project_view(project_id):
@@ -177,15 +180,28 @@ def project_view(project_id):
     saved_papers = []
     search_results = []
     search_error = None
+    index_status = {"indexed": False, "total_chunks": 0}
     
-    if active_tab == "literature":
+    if active_tab in ("literature", "ai"):
         saved_papers = papers_mgmt.get_project_papers(project_id, user["id"])
-        if search_query:
-            search_res = academic_search.search_academic_papers(search_query)
-            if search_res.get("success"):
-                search_results = search_res.get("papers", [])
-            else:
-                search_error = search_res.get("error")
+        
+    if active_tab == "literature" and search_query:
+        search_res = academic_search.search_academic_papers(search_query)
+        if search_res.get("success"):
+            search_results = search_res.get("papers", [])
+        else:
+            search_error = search_res.get("error")
+            
+    if active_tab == "ai":
+        index_path, meta_path = rag.get_project_index_paths(project_id)
+        if os.path.exists(index_path) and os.path.exists(meta_path):
+            try:
+                import json
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                    index_status = {"indexed": True, "total_chunks": len(meta)}
+            except Exception:
+                index_status = {"indexed": True, "total_chunks": 0}
                 
     return render_template(
         "project.html", 
@@ -194,8 +210,39 @@ def project_view(project_id):
         saved_papers=saved_papers,
         search_query=search_query,
         search_results=search_results,
-        search_error=search_error
+        search_error=search_error,
+        index_status=index_status
     )
+
+@app.route("/projects/<project_id>/ai/ask", methods=["POST"])
+@login_required
+def ai_ask_question(project_id):
+    user = session["user"]
+    # Check access
+    proj = db.get_project_details(project_id, user["id"])
+    if not proj:
+        return jsonify({"success": False, "error": "Access denied."}), 403
+        
+    data = request.get_json(silent=True) or request.form
+    question = data.get("question", "").strip()
+    
+    if not question:
+        return jsonify({"success": False, "error": "Question cannot be empty."}), 400
+        
+    res = research_agent.ask_research_agent(project_id, user["id"], question)
+    return jsonify(res)
+
+@app.route("/projects/<project_id>/ai/reindex", methods=["POST"])
+@login_required
+def ai_reindex_project(project_id):
+    user = session["user"]
+    res = rag.build_project_faiss_index(project_id, user["id"])
+    if res.get("success"):
+        flash(f"Literature vector index rebuilt ({res.get('total_chunks')} chunks from {res.get('total_papers')} papers).", "success")
+    else:
+        flash(f"Indexing notice: {res.get('error')}", "info")
+    return redirect(url_for("project_view", project_id=project_id, tab="ai"))
+
 
 @app.route("/projects/<project_id>/literature/search", methods=["GET"])
 @login_required

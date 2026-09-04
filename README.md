@@ -44,6 +44,7 @@ Open [http://localhost:5001](http://localhost:5001) in your browser.
 | **Database** | Supabase (PostgreSQL) + RLS | Relational integrity and DB-level role security (`Owner`, `Researcher`, `Viewer`) |
 | **Auth** | Supabase Auth (Email/Password + Google OAuth) | Secure, standards-compliant session management |
 | **Literature Search** | Semantic Scholar + arXiv APIs | Live academic discovery with citations, DOIs, and open-access PDFs |
+| **PDF Extraction & Reader** | PyMuPDF | In-browser reading, section/page parsing, and interactive annotations |
 | **AI Layer** | Gemini API + FAISS + Sentence Transformers | Project-grounded RAG with explicit source citations |
 
 ---
@@ -53,4 +54,6 @@ Open [http://localhost:5001](http://localhost:5001) in your browser.
 - **Collaborative Workspaces:** Multi-user research projects with PostgreSQL RLS security (`Owner`, `Researcher`, `Viewer` roles).
 - **Literature Discovery:** Live search across millions of papers via Semantic Scholar Graph & arXiv APIs.
 - **Project Paper Library:** Save open-access literature, cache PDFs, and organize metadata with zero fabricated numbers.
+- **In-App Reader & Annotations:** Read extracted papers in-browser, highlight passages with semantic tags, and collaborate on margin notes with team members.
+
 
